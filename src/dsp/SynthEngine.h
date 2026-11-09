@@ -48,6 +48,18 @@ struct EngineParams
     float lfoToCutoff = 0.0f; // -1..1, times 4 octaves
     float lfoToPitch = 0.0f;  // 0..1
 
+    // A/B sequence: A steps play the wavetable, B steps a longer fragment of the sample
+    bool  seqOn = false;
+    int   seqLength = 8;
+    juce::uint32 seqPattern = 0; // bit i set: step i is B
+    double seqStepBeats = 0.25;
+    bool  seqPerNote = false;
+    float fragOffset = 0.0f;     // -1..1 of the sample, relative to the position
+    int   fragDirection = 0;     // forward, reverse, forward-and-back
+    bool  fragFollowKeys = true;
+    int   fragTranspose = 0;
+    float fragLevel = 0.8f;
+
     // Host transport
     double bpm = 120.0;
     double ppqAtBlockStart = 0.0;
@@ -75,6 +87,7 @@ public:
     // Safe to read from the UI thread.
     float getDisplayPosition() const noexcept { return displayPosition.load (std::memory_order_relaxed); }
     float getVoicePosition (int voice) const noexcept { return voicePositions[(size_t) voice].load (std::memory_order_relaxed); }
+    int getDisplayStep() const noexcept { return displayStep.load (std::memory_order_relaxed); }
 
 private:
     enum class Stage { idle, attack, decay, sustain, release };
@@ -109,6 +122,15 @@ private:
 
         double lfoPhase = 0.0;
         float lfoRandom = 0.0f, lastLfo = 0.0f;
+
+        // A/B sequence
+        double seqClock = 0.0;   // steps since the note started (per-note mode)
+        juce::int64 lastStep = -1;
+        float abMix = 0.0f;      // 0 = A (wavetable), 1 = B (fragment); below 0: snap on the next block
+        bool fragActive = false;
+        double fragStart = 0.0;  // in source samples
+        double fragTravel = 0.0; // source samples travelled since the run of B steps started
+        double fragSpan = 0.0;   // source samples the whole run covers
     };
 
     void enterRelease (Voice& v) noexcept;
@@ -145,12 +167,15 @@ private:
 
     double globalLfoPhase = 0.0;
     float globalLfoRandom = 0.0f;
+    double seqClockGlobal = 0.0, seqClockChunkStart = 0.0, stepsPerSample = 0.0;
+    juce::int64 lastGlobalStep = -1;
 
     std::vector<float> posBuffer, bendBuffer, lfoBuffer, workL, workR;
     HalfbandDecimator decimL, decimR;
     juce::Random random;
 
     std::atomic<float> displayPosition { 0.0f };
+    std::atomic<int> displayStep { -1 };
     std::array<std::atomic<float>, kMaxVoices> voicePositions;
 };
 } // namespace gizmo

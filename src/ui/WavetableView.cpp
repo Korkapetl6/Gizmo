@@ -180,7 +180,7 @@ void WavetableView::paint (juce::Graphics& g)
 
     g.setColour (followsOther ? theme::textDim : theme::text);
     g.setFont (theme::font (12.5f));
-    g.drawText (followsOther ? pl ("gra tablicę A") : tableName, header, juce::Justification::centredLeft, true);
+    g.drawText (followsOther ? pl ("gra tablicę 1") : tableName, header, juce::Justification::centredLeft, true);
 
     if (showClear)
     {

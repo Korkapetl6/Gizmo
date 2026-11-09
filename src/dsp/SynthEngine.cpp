@@ -84,6 +84,32 @@ inline float readOscillator (const Wavetable& table, int level, float framePos, 
     return out;
 }
 
+/** Reads the original sample at a fractional position (4-point Hermite), wrapping around its ends. */
+inline float readSource (const std::vector<float>& s, double pos) noexcept
+{
+    const auto n = (int) s.size();
+    pos = std::fmod (pos, (double) n);
+
+    if (pos < 0.0)
+        pos += (double) n;
+
+    const auto i = (int) pos;
+    const auto t = (float) (pos - (double) i);
+    auto at = [&s, n] (int k) { return s[(size_t) ((k % n + n) % n)]; };
+
+    const auto xm1 = at (i - 1), x0 = at (i), x1 = at (i + 1), x2 = at (i + 2);
+    const auto c1 = 0.5f * (x1 - xm1);
+    const auto c2 = xm1 - 2.5f * x0 + 2.0f * x1 - 0.5f * x2;
+    const auto c3 = 0.5f * (x2 - xm1) + 1.5f * (x0 - x1);
+    return ((c3 * t + c2) * t + c1) * t + x0;
+}
+
+inline bool isStepB (juce::uint32 pattern, juce::int64 stepIndex, int length) noexcept
+{
+    const auto step = (int) (((stepIndex % length) + length) % length);
+    return ((pattern >> step) & 1u) != 0;
+}
+
 /** Coefficients of a state-variable filter (Andrew Simper's trapezoidal form). */
 struct SvfCoefficients
 {
@@ -192,6 +218,9 @@ void SynthEngine::reset()
     lastNote = -1.0f;
     globalLfoPhase = 0.0;
     globalLfoRandom = 0.0f;
+    seqClockGlobal = 0.0;
+    lastGlobalStep = -1;
+    displayStep.store (-1);
     decimL.reset();
     decimR.reset();
 }
@@ -254,6 +283,12 @@ void SynthEngine::process (juce::AudioBuffer<float>& buffer, const juce::MidiBuf
         globalLfoPhase = cycles - std::floor (cycles);
     }
 
+    // The A/B sequence: a shared clock follows the host's bar grid while it plays.
+    stepsPerSample = (std::max (1.0, p.bpm) / 60.0) / std::max (1.0e-3, p.seqStepBeats) / internalRate;
+
+    if (p.seqOn && ! p.seqPerNote && p.transportKnown)
+        seqClockGlobal = p.ppqAtBlockStart / std::max (1.0e-3, p.seqStepBeats);
+
     positionStart = firstBlock ? p.position : lastPosition;
     positionEnd = p.position;
     lastPosition = p.position;
@@ -288,6 +323,32 @@ void SynthEngine::process (juce::AudioBuffer<float>& buffer, const juce::MidiBuf
     const auto basePos = positionEnd + wheelSmoothed * p.wheelToPos;
     const auto globalLfo = p.lfoRetrig ? 0.0f : lfoShapeValue (p.lfoShape, globalLfoPhase, globalLfoRandom);
     displayPosition.store (juce::jlimit (0.0f, 1.0f, basePos + globalLfo * p.lfoToPos * 0.5f), std::memory_order_relaxed);
+
+    {
+        auto step = -1;
+
+        if (p.seqOn)
+        {
+            const auto length = juce::jlimit (1, 16, p.seqLength);
+            juce::int64 index = (juce::int64) std::floor (seqClockGlobal);
+
+            if (p.seqPerNote)
+            {
+                const Voice* newest = nullptr;
+
+                for (const auto& v : voices)
+                    if (v.stage != Stage::idle && v.stage != Stage::release && (newest == nullptr || v.age > newest->age))
+                        newest = &v;
+
+                index = newest != nullptr ? (juce::int64) std::floor (newest->seqClock) : -1;
+            }
+
+            if (index >= 0)
+                step = (int) (index % length);
+        }
+
+        displayStep.store (step, std::memory_order_relaxed);
+    }
 
     for (size_t i = 0; i < voices.size(); ++i)
     {
@@ -343,9 +404,13 @@ void SynthEngine::renderRange (float* outL, float* outR, int from, int to, int b
         std::fill (workL.begin(), workL.begin() + n2, 0.0f);
         std::fill (workR.begin(), workR.begin() + n2, 0.0f);
 
+        seqClockChunkStart = seqClockGlobal;
+
         for (auto& v : voices)
             if (v.stage != Stage::idle)
                 renderVoice (v, n2, p, a, b);
+
+        seqClockGlobal += (double) n2 * stepsPerSample;
 
         decimL.process (workL.data(), outL + start, n);
 
@@ -394,6 +459,15 @@ void SynthEngine::renderVoice (Voice& v, int numInternal, const EngineParams& p,
     const auto resonantQ = 1.3066f * (1.0f + 8.0f * p.resonance * p.resonance);
     const auto stepFade = std::max (1, (int) (0.0015 * internalRate));
 
+    // A/B sequence: B steps play the sample of table A from the current position.
+    const auto& source = tableA.source;
+    const auto sequenceActive = p.seqOn && ! source.empty();
+    const auto seqLength = juce::jlimit (1, 16, p.seqLength);
+    const auto stepSamples = 1.0 / std::max (1.0e-12, stepsPerSample); // internal samples per step
+    const auto sourceLength = (double) source.size();
+    const auto mixStep = 1.0f / (0.004f * rate);                         // 4 ms crossfade between A and B
+    const auto fragGain = p.fragLevel * 0.7071f;
+
     float aL, aR, bL, bR;
     panGains (p.panA, p.levelA, aL, aR);
     panGains (p.panB, p.levelB, bL, bR);
@@ -436,6 +510,59 @@ void SynthEngine::renderVoice (Voice& v, int numInternal, const EngineParams& p,
         const auto levelB = p.raw ? 0 : mipLevelFor (freqB);
         const auto posOffset = velOffset + lfo * p.lfoToPos * 0.5f;
 
+        // Which step are we on, and does a run of B steps start here?
+        auto wantB = false;
+        auto fragSpeed = 0.0;
+
+        if (sequenceActive)
+        {
+            const auto clock = p.seqPerNote ? v.seqClock : seqClockChunkStart + (double) i * stepsPerSample;
+            const auto stepIndex = (juce::int64) std::floor (clock);
+            wantB = isStepB (p.seqPattern, stepIndex, seqLength);
+
+            const auto keyOffset = p.fragFollowKeys ? basePitch - (double) tableA.rootNote : 0.0;
+            fragSpeed = juce::jlimit (1.0 / 16.0, 8.0, tableA.sourceRate / internalRate
+                                                          * std::exp2 ((keyOffset + p.fragTranspose) / 12.0));
+
+            if (stepIndex != v.lastStep)
+            {
+                const auto wasB = v.lastStep >= 0 && isStepB (p.seqPattern, v.lastStep, seqLength);
+
+                if (wantB && ! wasB)
+                {
+                    // The run lasts as many steps as there are B's in a row (a pattern of only B never ends).
+                    int run = 0;
+
+                    while (run < seqLength && isStepB (p.seqPattern, stepIndex + run, seqLength))
+                        ++run;
+
+                    const auto remaining = ((double) run - (clock - std::floor (clock))) * stepSamples;
+                    const auto pos = juce::jlimit (0.0f, 1.0f, posBuffer[(size_t) i] + posOffset);
+                    auto start = (((double) pos * (kNumFrames - 1) + 0.5) / kNumFrames + (double) p.fragOffset) * sourceLength;
+                    start = std::fmod (start, sourceLength);
+
+                    v.fragStart = start < 0.0 ? start + sourceLength : start;
+                    v.fragSpan = remaining * fragSpeed;
+                    v.fragTravel = 0.0;
+                    v.fragActive = true;
+                }
+
+                v.lastStep = stepIndex;
+            }
+
+            if (p.seqPerNote)
+                v.seqClock += (double) n * stepsPerSample;
+        }
+        else
+        {
+            v.lastStep = -1;
+        }
+
+        const auto mixTarget = wantB ? 1.0f : 0.0f;
+
+        if (v.abMix < 0.0f)
+            v.abMix = mixTarget;
+
         // Filter
         advanceEnvelope (v.filterStage, v.filterEnvLevel, fAttackInc, fDecayCoef, fSustain, fReleaseCoef);
 
@@ -471,6 +598,41 @@ void SynthEngine::renderVoice (Voice& v, int numInternal, const EngineParams& p,
 
             auto left = outA * aL + outB * bL;
             auto right = outA * aR + outB * bR;
+
+            if (v.fragActive)
+            {
+                double srcPos;
+
+                if (p.fragDirection == 0)
+                {
+                    srcPos = v.fragStart + v.fragTravel;
+                }
+                else if (p.fragDirection == 1)
+                {
+                    srcPos = v.fragStart + v.fragSpan - v.fragTravel; // the same stretch, backwards
+                }
+                else
+                {
+                    const auto t = v.fragSpan > 0.0 ? std::fmod (v.fragTravel, v.fragSpan) : v.fragTravel;
+                    srcPos = v.fragStart + (t < v.fragSpan * 0.5 ? t : v.fragSpan - t);
+                }
+
+                const auto fragment = readSource (source, srcPos) * fragGain;
+                v.fragTravel += fragSpeed;
+
+                if (v.abMix != mixTarget)
+                    v.abMix = juce::jlimit (0.0f, 1.0f, v.abMix + juce::jlimit (-mixStep, mixStep, mixTarget - v.abMix));
+
+                const auto angle = v.abMix * juce::MathConstants<float>::halfPi;
+                const auto gainA = v.abMix <= 0.0f ? 1.0f : (v.abMix >= 1.0f ? 0.0f : std::cos (angle));
+                const auto gainB = v.abMix <= 0.0f ? 0.0f : (v.abMix >= 1.0f ? 1.0f : std::sin (angle));
+
+                left = left * gainA + fragment * gainB;
+                right = right * gainA + fragment * gainB;
+
+                if (v.abMix <= 0.0f && ! wantB)
+                    v.fragActive = false;
+            }
 
             if (p.filterOn)
             {
@@ -661,6 +823,14 @@ void SynthEngine::startVoice (Voice& v, int note, float velocity, const EnginePa
     // A stolen voice keeps its phase and envelope level, so it doesn't click either.
     v.lfoPhase = 0.0;
     v.lfoRandom = random.nextFloat() * 2.0f - 1.0f;
+    v.seqClock = 0.0;
+    v.lastStep = -1;
+
+    if (wasIdle)
+    {
+        v.abMix = -1.0f; // take A or B straight away; the envelope starts from silence anyway
+        v.fragActive = false;
+    }
     for (auto* osc : { &v.oscA, &v.oscB })
     {
         osc->frame = -1;

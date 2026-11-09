@@ -397,6 +397,9 @@ std::unique_ptr<Wavetable> copyOf (const Wavetable& t)
     c->name = t.name;
     c->sourcePath = t.sourcePath;
     c->pitchedFrames = t.pitchedFrames;
+    c->source = t.source;
+    c->sourceRate = t.sourceRate;
+    c->rootNote = t.rootNote;
     return c;
 }
 
@@ -549,13 +552,71 @@ int runDemo (const juce::File& sample, const juce::File& outDir)
         writeWav (outDir.getChildFile ("demo3_lead.wav"), r.left, &r.right, sr);
     }
 
+    // 4. Chords with the A/B sequence A A B B B B B A: the wavetable, then the flute itself
+    const auto transpose = 12.0f * (float) std::round ((cycles.table->rootNote - 62.0f) / 12.0f);
+    std::cout << "  flute pitch " << cycles.table->rootNote << ", B transposed by " << transpose << std::endl;
+
+    {
+        GizmoProcessor p;
+        p.replaceTable (GizmoProcessor::slotA, copyOf (*cycles.table));
+        p.setPattern (kDefaultPattern);
+        setParams (p, { { ParamID::position, 0.45f }, { ParamID::levelA, 0.8f }, { ParamID::panA, -0.35f },
+                        { ParamID::levelB, 0.65f }, { ParamID::panB, 0.35f }, { ParamID::offsetB, 0.3f },
+                        { ParamID::detune, 12.0f }, { ParamID::attack, 0.02f }, { ParamID::decay, 1.5f },
+                        { ParamID::sustain, 0.85f }, { ParamID::release, 1.2f }, { ParamID::velToAmp, 0.3f },
+                        { ParamID::cutoff, 6000.0f }, { ParamID::keyTrack, 0.3f },
+                        { ParamID::lfoSync, 1.0f }, { ParamID::lfoDivision, 1.0f }, { ParamID::lfoToPos, 0.8f },
+                        { ParamID::seqOn, 1.0f }, { ParamID::seqLength, 8.0f }, { ParamID::seqRate, 3.0f },
+                        { ParamID::fragTranspose, transpose }, { ParamID::fragLevel, 0.9f }, { ParamID::gain, -12.0f } });
+
+        std::vector<Note> notes;
+
+        for (size_t c = 0; c < progression.size(); ++c)
+            for (auto n : progression[c])
+                notes.push_back ({ (double) c * bar + 0.02, bar - 0.05, n, 0.7f });
+
+        const auto r = render (p, 4.0 * bar + 2.0, notes, {}, sr, 512, &playHead);
+        report ("sequence chords", r);
+        writeWav (outDir.getChildFile ("demo4_sequence_chords.wav"), r.left, &r.right, sr);
+    }
+
+    // 5. Lead with A B A B on eighths, B played backwards
+    {
+        GizmoProcessor p;
+        p.replaceTable (GizmoProcessor::slotA, copyOf (*cycles.table));
+        p.setPattern (0xaa);
+        setParams (p, { { ParamID::position, 0.3f }, { ParamID::voiceMode, 1.0f }, { ParamID::glide, 0.05f },
+                        { ParamID::levelA, 0.85f }, { ParamID::levelB, 0.4f }, { ParamID::semiB, -12.0f },
+                        { ParamID::detune, 9.0f }, { ParamID::attack, 0.01f }, { ParamID::decay, 0.6f },
+                        { ParamID::sustain, 0.8f }, { ParamID::release, 0.35f }, { ParamID::cutoff, 3000.0f },
+                        { ParamID::resonance, 0.2f }, { ParamID::keyTrack, 0.5f },
+                        { ParamID::seqOn, 1.0f }, { ParamID::seqLength, 8.0f }, { ParamID::seqRate, 1.0f },
+                        { ParamID::seqStart, 1.0f }, { ParamID::fragDirection, 1.0f }, { ParamID::fragTranspose, transpose },
+                        { ParamID::fragLevel, 0.9f }, { ParamID::gain, -8.0f } });
+
+        const std::pair<int, double> melody[] = { { 63, 2.0 }, { 68, 1.0 }, { 72, 1.0 }, { 70, 2.0 }, { 65, 2.0 },
+                                                  { 60, 2.0 }, { 63, 1.0 }, { 65, 1.0 }, { 68, 4.0 } };
+        std::vector<Note> notes;
+        double t = 0.02;
+
+        for (const auto& [note, beats] : melody)
+        {
+            notes.push_back ({ t, beats * beat * 0.95, note, 0.75f });
+            t += beats * beat;
+        }
+
+        const auto r = render (p, t + 1.5, notes, {}, sr, 512, &playHead);
+        report ("sequence lead, B reversed", r);
+        writeWav (outDir.getChildFile ("demo5_sequence_reverse.wav"), r.left, &r.right, sr);
+    }
+
     // Editor with the sample loaded
     {
         GizmoProcessor p;
         p.replaceTable (GizmoProcessor::slotA, copyOf (*cycles.table));
         setParams (p, { { ParamID::position, 0.45f }, { ParamID::offsetB, 0.3f }, { ParamID::detune, 12.0f },
                         { ParamID::cutoff, 4500.0f }, { ParamID::lfoSync, 1.0f }, { ParamID::lfoDivision, 1.0f },
-                        { ParamID::lfoToPos, 0.8f } });
+                        { ParamID::lfoToPos, 0.8f }, { ParamID::seqOn, 1.0f }, { ParamID::fragTranspose, transpose } });
         render (p, 1.0, { { 0.0, 2.0, 56, 0.7f }, { 0.0, 2.0, 63, 0.7f }, { 0.0, 2.0, 67, 0.7f } }, {}, sr, 512, &playHead);
 
         std::unique_ptr<juce::AudioProcessorEditor> editor (p.createEditor());
@@ -603,6 +664,9 @@ int main (int argc, char** argv)
     auto glideTable = tableFrom (glide, sr, ImportMode::cycles, "sine glide");
     auto chunkTable = tableFrom (voice, sr, ImportMode::chunks, "vowels as chunks");
 
+    std::cout << "  detected pitch: vowels " << vowelTable->rootNote << " (140 Hz is 49.1), saw " << sawTable->rootNote
+              << " (110 Hz is 45.0)" << std::endl;
+    check (std::abs (vowelTable->rootNote - 49.13f) < 0.3f && std::abs (sawTable->rootNote - 45.0f) < 0.3f, "sample pitch detected");
     checkTable (*sawTable, "saw sweep", 60, 64);
     checkTable (*vowelTable, "vowels", 60, 64);
     checkTable (*noiseTable, "noise", 0, 12);
@@ -754,6 +818,63 @@ int main (int argc, char** argv)
                "mono glide moves from A3 to A4");
     }
 
+    std::cout << "A/B sequence" << std::endl;
+    {
+        // Pattern A B at 1/16 and 120 BPM: 125 ms per step. With the fragment silent, B steps must be quiet.
+        auto sequence = [&] (int direction, float fragLevel)
+        {
+            GizmoProcessor p;
+            p.replaceTable (GizmoProcessor::slotA, tableFrom (voice, sr, ImportMode::cycles, "vowels"));
+            p.setPattern (0x2);
+            setParams (p, { { ParamID::seqOn, 1.0f }, { ParamID::seqLength, 2.0f }, { ParamID::seqRate, 3.0f },
+                            { ParamID::fragDirection, (float) direction }, { ParamID::fragLevel, fragLevel },
+                            { ParamID::levelB, 0.0f }, { ParamID::attack, 0.001f }, { ParamID::sustain, 1.0f } });
+            DemoPlayHead head;
+            head.bpm = 120.0;
+            return render (p, 2.0, { { 0.0, 2.0, 57, 0.9f } }, {}, 48000.0, 512, &head);
+        };
+
+        const auto gated = sequence (0, 0.0f);
+        auto windowRms = [] (const std::vector<float>& x, double from, double to)
+        {
+            double sum = 0.0;
+            const auto a = (size_t) (from * 48000.0), b = (size_t) (to * 48000.0);
+
+            for (auto i = a; i < b; ++i)
+                sum += (double) x[i] * x[i];
+
+            return std::sqrt (sum / (double) (b - a));
+        };
+
+        double loudA = 0.0, loudB = 0.0;
+
+        for (int step = 2; step < 14; ++step)
+        {
+            const auto rms = windowRms (gated.left, step * 0.125 + 0.03, step * 0.125 + 0.095);
+            (step % 2 == 0 ? loudA : loudB) += rms / 6.0;
+        }
+
+        std::cout << "  A steps rms " << loudA << ", silent B steps rms " << loudB << std::endl;
+        check (loudA > 0.02 && loudB < loudA * 0.01, "steps switch on the 1/16 grid");
+
+        const auto forward = sequence (0, 0.8f), backward = sequence (1, 0.8f), pingPong = sequence (2, 0.8f);
+
+        for (const auto* r : { &forward, &backward, &pingPong })
+        {
+            const auto st = analyse (r->left);
+            check (st.finite && st.clickRatio < 8.0f && st.peak < 1.5f,
+                   "sequence " + juce::String (r == &forward ? "forward" : (r == &backward ? "reverse" : "forward-and-back"))
+                       + ": no clicks (ratio " + juce::String (st.clickRatio, 2) + ")");
+        }
+
+        double difference = 0.0;
+
+        for (size_t i = 0; i < forward.left.size(); ++i)
+            difference += std::abs (forward.left[i] - backward.left[i]);
+
+        check (difference / (double) forward.left.size() > 1.0e-3, "reverse plays something different");
+    }
+
     std::cout << "State" << std::endl;
     {
         GizmoProcessor a;
@@ -762,6 +883,7 @@ int main (int argc, char** argv)
         setParam (a, ParamID::cutoff, 1234.0f);
         setParam (a, ParamID::lfoShape, 3.0f);
         setParam (a, ParamID::position, 0.37f);
+        a.setPattern (0x5a5u);
 
         juce::MemoryBlock state;
         a.getStateInformation (state);
@@ -786,6 +908,10 @@ int main (int argc, char** argv)
         check (maxDiff (a.getTable (GizmoProcessor::slotA), b.getTable (GizmoProcessor::slotA)) < 1.0e-4f, "table A survives save and load");
         check (maxDiff (a.getTable (GizmoProcessor::slotB), b.getTable (GizmoProcessor::slotB)) < 1.0e-4f, "table B survives save and load");
         check (b.getTable (GizmoProcessor::slotA)->name == "vowels.wav", "table name survives");
+        check (b.getTable (GizmoProcessor::slotA)->source.size() == a.getTable (GizmoProcessor::slotA)->source.size()
+                   && std::abs (b.getTable (GizmoProcessor::slotA)->rootNote - a.getTable (GizmoProcessor::slotA)->rootNote) < 0.01f,
+               "sample and its pitch survive");
+        check (b.getPattern() == 0x5a5u, "A/B pattern survives");
         check (std::abs (b.apvts.getRawParameterValue (ParamID::cutoff)->load() - 1234.0f) < 1.0f, "cutoff survives");
         check (juce::roundToInt (b.apvts.getRawParameterValue (ParamID::lfoShape)->load()) == 3, "LFO shape survives");
     }

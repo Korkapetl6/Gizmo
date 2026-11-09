@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Params.h"
 #include "dsp/SynthEngine.h"
 #include "dsp/Wavetable.h"
 
@@ -64,6 +65,10 @@ public:
 
     const gizmo::SynthEngine& getEngine() const noexcept { return engine; }
 
+    /** The A/B sequence: bit i set means step i plays the sample (B). */
+    void setPattern (juce::uint32 bits);
+    juce::uint32 getPattern() const noexcept { return pattern.load(); }
+
     juce::AudioProcessorValueTreeState apvts;
 
 private:
@@ -94,7 +99,11 @@ private:
         std::atomic<float>* fAttack {}, * fDecay {}, * fSustain {}, * fRelease {};
         std::atomic<float>* lfoShape {}, * lfoRate {}, * lfoSync {}, * lfoDivision {}, * lfoRetrig {};
         std::atomic<float>* lfoToPos {}, * lfoToCutoff {}, * lfoToPitch {};
+        std::atomic<float>* seqOn {}, * seqLength {}, * seqRate {}, * seqStart {};
+        std::atomic<float>* fragOffset {}, * fragDirection {}, * fragPitch {}, * fragTranspose {}, * fragLevel {};
     };
+
+    std::atomic<juce::uint32> pattern { gizmo::kDefaultPattern };
 
     ParamPointers params;
 

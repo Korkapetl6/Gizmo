@@ -132,4 +132,106 @@ void Segmented::mouseDown (const juce::MouseEvent& e)
             onChange (selected);
     }
 }
+//==============================================================================
+PatternEditor::PatternEditor (juce::Colour a, juce::Colour b) : colourA (a), colourB (b)
+{
+    setMouseCursor (juce::MouseCursor::PointingHandCursor);
+}
+
+void PatternEditor::setPattern (juce::uint32 newBits, int newLength)
+{
+    if (newBits != bits || newLength != length)
+    {
+        bits = newBits;
+        length = newLength;
+        repaint();
+    }
+}
+
+void PatternEditor::setPlayingStep (int step)
+{
+    if (step != playing)
+    {
+        playing = step;
+        repaint();
+    }
+}
+
+void PatternEditor::setActive (bool isActive)
+{
+    if (isActive != active)
+    {
+        active = isActive;
+        repaint();
+    }
+}
+
+int PatternEditor::stepAt (float x) const
+{
+    return juce::jlimit (0, 15, (int) (x / (float) getWidth() * 16.0f));
+}
+
+void PatternEditor::paint (juce::Graphics& g)
+{
+    const auto cellWidth = (float) getWidth() / 16.0f;
+    const auto height = (float) getHeight();
+
+    for (int i = 0; i < 16; ++i)
+    {
+        const auto isB = ((bits >> i) & 1u) != 0;
+        const auto inUse = i < length;
+        const auto colour = isB ? colourB : colourA;
+        const auto r = juce::Rectangle<float> (cellWidth * (float) i, 0.0f, cellWidth, height).reduced (2.0f, 1.0f);
+        const auto alpha = (inUse ? 1.0f : 0.25f) * (active ? 1.0f : 0.5f);
+
+        g.setColour (colour.withAlpha ((isB ? 0.32f : 0.14f) * alpha));
+        g.fillRoundedRectangle (r, 5.0f);
+
+        const auto isPlaying = active && inUse && i == playing;
+        g.setColour (colour.withAlpha ((isPlaying ? 1.0f : 0.55f) * alpha));
+        g.drawRoundedRectangle (r, 5.0f, isPlaying ? 2.0f : 1.0f);
+
+        g.setColour ((isPlaying ? juce::Colours::white : colour).withAlpha (alpha));
+        g.setFont (theme::font (14.0f, true));
+        g.drawText (isB ? "B" : "A", r, juce::Justification::centred, false);
+
+        if (i % 4 == 0)
+        {
+            g.setColour (theme::textDim.withAlpha (0.5f * alpha));
+            g.fillRect (r.getX(), height - 1.0f, 1.5f, 1.0f);
+        }
+    }
+}
+
+void PatternEditor::paintStep (int step)
+{
+    if (step == lastPainted)
+        return;
+
+    lastPainted = step;
+    const auto mask = 1u << step;
+    const auto newBits = paintAsB ? (bits | mask) : (bits & ~mask);
+
+    if (newBits != bits)
+    {
+        bits = newBits;
+        repaint();
+
+        if (onChange)
+            onChange (bits);
+    }
+}
+
+void PatternEditor::mouseDown (const juce::MouseEvent& e)
+{
+    const auto step = stepAt (e.position.x);
+    paintAsB = ((bits >> step) & 1u) == 0; // flip the clicked step, then paint the same value while dragging
+    lastPainted = -1;
+    paintStep (step);
+}
+
+void PatternEditor::mouseDrag (const juce::MouseEvent& e)
+{
+    paintStep (stepAt (e.position.x));
+}
 } // namespace gizmo

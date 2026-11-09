@@ -29,14 +29,27 @@ Gotowe pliki są w zakładce **Releases** → *Gizmo (najnowsza wersja)*. Każda
 
 ## Jak tego używać
 
-- **Wczytywanie.** Przeciągnij plik audio (WAV, AIFF, FLAC, OGG, MP3) na panel A z folderu albo z przeglądarki Abletona, albo kliknij panel i wybierz plik. Panel B domyślnie gra tablicę A. Upuść na niego inny sampel, żeby B miał własną; krzyżyk wraca do tablicy A.
+- **Wczytywanie.** Przeciągnij plik audio (WAV, AIFF, FLAC, OGG, MP3, do 60 sekund) na panel 1 z folderu albo z przeglądarki Abletona, albo kliknij panel i wybierz plik. Oscylator 2 domyślnie gra tablicę 1. Upuść na jego panel inny sampel, żeby miał własną; krzyżyk wraca do tablicy 1.
 - **Cięcie.** *Cykle* wycina z każdego fragmentu jeden okres fali (najlepsze dla dźwięków o wyraźnej wysokości: wokal, smyczki, syntezatory). Fragmenty bez wysokości (szum, perkusja) są wtedy brane jako kawałki. *Kawałki* zawsze bierze stały kawałek nagrania, co daje bardziej szorstkie, ziarniste brzmienie.
 - **Przejścia.** *Płynnie* miesza sąsiednie klatki. *Skoki* zmienia klatkę dopiero na końcu cyklu, jak transwave w Ensoniq.
 - **Brzmienie.** *Czysto* usuwa aliasing. *Surowo* go zostawia, co brzmi bardziej cyfrowo.
 - **Filtr.** Czterobiegunowy dolnoprzepustowy z rezonansem, śledzeniem klawiatury i własną obwiednią.
 - **LFO.** Sinus, trójkąt, piła, kwadrat albo losowy, w Hz albo w tempie Abletona. *Wspólne* to jedno LFO dla wszystkich nut, *Od nuty* startuje od nowa z każdą nutą. Steruje pozycją, cutoffem i wysokością.
 
-Projekt z Gizmo pamięta wczytane tablice, więc nie potrzebuje oryginalnych plików.
+Projekt z Gizmo pamięta wczytane tablice i sample, więc nie potrzebuje oryginalnych plików.
+
+## Ciąg A/B
+
+Ciąg przełącza w rytmie tempa Abletona między dwoma źródłami: **A** to fala z tablicy (oba oscylatory), **B** to dłuższy fragment samego sampla z panelu 1, zaczynający się w miejscu, które wskazuje Pozycja.
+
+- Klikasz kroki, żeby zmieniać A na B i z powrotem; przeciągnięcie maluje kilka kroków naraz. *Długość* to liczba kroków (do 16), *Krok* to ich wartość rytmiczna (1/4 do 1/32).
+- Każde wejście w B zaczyna fragment od początku, a kolejne B pod rząd grają go dalej. W `AABBBBBA` fragment startuje na trzecim kroku i gra przez pięć kroków.
+- *Kierunek B*: przód, tył (ten sam kawałek odwrócony) albo przód-tył.
+- *Strój B*: *Klawisze* transponuje fragment jak sampler (względem wykrytej wysokości sampla), *Oryginał* gra go w oryginalnej wysokości. *Transp. B* przesuwa go o półtony.
+- *Start ciągu*: *Wspólny* trzyma się taktów Abletona, *Od nuty* zaczyna ciąg od nowa z każdą nutą.
+- *Przesunięcie* przesuwa początek fragmentu względem Pozycji, *Poziom B* ustawia jego głośność.
+
+Filtr i obwiednia głośności działają na oba źródła.
 
 ## Gałki F-I-Z-M-O
 

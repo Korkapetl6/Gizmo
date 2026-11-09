@@ -28,6 +28,10 @@ struct Wavetable
     int pitchedFrames = 0;     // how many frames were cut as real cycles
     bool isDefault = false;    // the built-in table, not saved with the project
 
+    std::vector<float> source; // the audible part of the original sample (mono), played by the B steps
+    double sourceRate = 44100.0;
+    float rootNote = 60.0f;    // detected pitch of the sample, as a MIDI note (60 if it has none)
+
     const float* getFrame (int frame) const noexcept
     {
         return frames.data() + (size_t) frame * kFrameSize;
@@ -54,8 +58,8 @@ std::unique_ptr<Wavetable> buildWavetableFromFrames (const float* frames);
 /** The table the plugin starts with: sine, saw, square and a narrowing pulse. */
 std::unique_ptr<Wavetable> makeDefaultWavetable();
 
-/** Longer files are cut off after this many seconds. */
-constexpr double kMaxImportSeconds = 300.0;
+/** Longer files are cut off after this many seconds (the sample itself is kept for the B steps). */
+constexpr double kMaxImportSeconds = 60.0;
 
 /** Reads an audio file (up to kMaxImportSeconds) and builds a wavetable from it. */
 ImportResult loadWavetableFromFile (const juce::File& file, ImportMode mode, juce::AudioFormatManager& formats);

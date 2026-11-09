@@ -7,7 +7,7 @@ using namespace gizmo;
 namespace
 {
 constexpr int kStateMagic = 0x477a6d6f; // "Gzmo"
-constexpr int kStateVersion = 1;
+constexpr int kStateVersion = 2;
 
 juce::String percentText (float v) { return juce::String (juce::roundToInt (v * 100.0f)) + " %"; }
 
@@ -141,12 +141,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout GizmoProcessor::createLayout
     addFloat (ParamID::velToPos, "Velocity na pozycję", bipolar, 0.0f, signedPercentText, parsePercent);
     addFloat (ParamID::wheelToPos, "Kółko na pozycję", bipolar, 0.0f, signedPercentText, parsePercent);
 
-    addFloat (ParamID::levelA, "Poziom A", unit, 0.8f, percentText, parsePercent);
-    addFloat (ParamID::panA, "Pan A", bipolar, -0.2f, panText, parsePan);
-    addFloat (ParamID::levelB, "Poziom B", unit, 0.6f, percentText, parsePercent);
-    addFloat (ParamID::panB, "Pan B", bipolar, 0.2f, panText, parsePan);
-    addInt (ParamID::semiB, "Transpozycja B", -24, 24, 0, true);
-    addFloat (ParamID::offsetB, "Przesunięcie B", bipolar, 0.0f, signedPercentText, parsePercent);
+    addFloat (ParamID::levelA, "Poziom 1", unit, 0.8f, percentText, parsePercent);
+    addFloat (ParamID::panA, "Pan 1", bipolar, -0.2f, panText, parsePan);
+    addFloat (ParamID::levelB, "Poziom 2", unit, 0.6f, percentText, parsePercent);
+    addFloat (ParamID::panB, "Pan 2", bipolar, 0.2f, panText, parsePan);
+    addInt (ParamID::semiB, "Transpozycja 2", -24, 24, 0, true);
+    addFloat (ParamID::offsetB, "Przesunięcie 2", bipolar, 0.0f, signedPercentText, parsePercent);
 
     addFloat (ParamID::attack, "Attack", skewedRange (0.001f, 10.0f, 0.3f), 0.005f, timeText, parseTime);
     addFloat (ParamID::decay, "Decay", skewedRange (0.001f, 20.0f, 0.6f), 0.6f, timeText, parseTime);
@@ -174,6 +174,24 @@ juce::AudioProcessorValueTreeState::ParameterLayout GizmoProcessor::createLayout
                                                               pl ("LFO podział"), divisions, kDefaultLfoDivision));
     }
     addChoice (ParamID::lfoRetrig, "LFO start", { "Wspólne", "Od nuty" }, 0);
+
+    addChoice (ParamID::seqOn, "Ciąg A/B", { "Wył.", "Wł." }, 0);
+    addInt (ParamID::seqLength, "Ciąg długość", 1, kMaxSteps, 8, false);
+    {
+        StringArray rates;
+
+        for (auto* r : kSeqRateNames)
+            rates.add (r);
+
+        ps.push_back (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::seqRate, 1 }, pl ("Ciąg krok"),
+                                                              rates, kDefaultSeqRate));
+    }
+    addChoice (ParamID::seqStart, "Ciąg start", { "Wspólne", "Od nuty" }, 0);
+    addFloat (ParamID::fragOffset, "Fragment przesunięcie", bipolar, 0.0f, signedPercentText, parsePercent);
+    addChoice (ParamID::fragDirection, "Fragment kierunek", { "Przód", "Tył", "Przód-tył" }, 0);
+    addChoice (ParamID::fragPitch, "Fragment strój", { "Klawisze", "Oryginał" }, 0);
+    addInt (ParamID::fragTranspose, "Fragment transpozycja", -24, 24, 0, true);
+    addFloat (ParamID::fragLevel, "Fragment poziom", unit, 0.8f, percentText, parsePercent);
 
     addChoice (ParamID::voiceMode, "Głosy", { "Poly", "Mono" }, 0);
     addFloat (ParamID::glide, "Glide", skewedRange (0.0f, 5.0f, 0.3f), 0.0f,
@@ -237,6 +255,16 @@ GizmoProcessor::GizmoProcessor()
     params.lfoToPos = get (ParamID::lfoToPos);
     params.lfoToCutoff = get (ParamID::lfoToCutoff);
     params.lfoToPitch = get (ParamID::lfoToPitch);
+    params.seqOn = get (ParamID::seqOn);
+    params.seqLength = get (ParamID::seqLength);
+    params.seqRate = get (ParamID::seqRate);
+    params.seqStart = get (ParamID::seqStart);
+    params.fragOffset = get (ParamID::fragOffset);
+    params.fragDirection = get (ParamID::fragDirection);
+    params.fragPitch = get (ParamID::fragPitch);
+    params.fragTranspose = get (ParamID::fragTranspose);
+    params.fragLevel = get (ParamID::fragLevel);
+    apvts.state.setProperty ("pattern", (int) kDefaultPattern, nullptr);
 
     owned[slotA] = makeDefaultWavetable();
     live[slotA].store (owned[slotA].get());
@@ -304,6 +332,16 @@ EngineParams GizmoProcessor::readParams() const
     p.lfoToPos = v (params.lfoToPos);
     p.lfoToCutoff = v (params.lfoToCutoff);
     p.lfoToPitch = v (params.lfoToPitch);
+    p.seqOn = on (params.seqOn);
+    p.seqLength = whole (params.seqLength);
+    p.seqPattern = pattern.load (std::memory_order_relaxed);
+    p.seqStepBeats = kSeqRateBeats[juce::jlimit (0, kNumSeqRates - 1, whole (params.seqRate))];
+    p.seqPerNote = on (params.seqStart);
+    p.fragOffset = v (params.fragOffset);
+    p.fragDirection = whole (params.fragDirection);
+    p.fragFollowKeys = ! on (params.fragPitch);
+    p.fragTranspose = whole (params.fragTranspose);
+    p.fragLevel = v (params.fragLevel);
     return p;
 }
 
@@ -433,6 +471,14 @@ void GizmoProcessor::setImportMode (ImportMode mode)
     sendChangeMessage();
 }
 
+void GizmoProcessor::setPattern (juce::uint32 bits)
+{
+    bits &= (1u << kMaxSteps) - 1u;
+    pattern.store (bits);
+    apvts.state.setProperty ("pattern", (int) bits, nullptr);
+    sendChangeMessage();
+}
+
 bool GizmoProcessor::isSupportedFile (const juce::File& file) const
 {
     return file.existsAsFile() && formats.findFormatForFileExtension (file.getFileExtension()) != nullptr;
@@ -482,6 +528,21 @@ void GizmoProcessor::getStateInformation (juce::MemoryBlock& destData)
             }
 
             out.write (bytes.data(), bytes.size());
+
+            // Version 2: the sample itself, for the B steps
+            out.writeDouble (table->sourceRate);
+            out.writeFloat (table->rootNote);
+            out.writeInt ((int) table->source.size());
+            std::vector<char> sourceBytes (table->source.size() * 2);
+
+            for (size_t i = 0; i < table->source.size(); ++i)
+            {
+                const auto u = (juce::uint16) (juce::int16) juce::jlimit (-32767, 32767, juce::roundToInt (table->source[i] * 32767.0f));
+                sourceBytes[i * 2] = (char) (u & 0xff);
+                sourceBytes[i * 2 + 1] = (char) (u >> 8);
+            }
+
+            out.write (sourceBytes.data(), sourceBytes.size());
         }
 
         out.flush();
@@ -493,7 +554,12 @@ void GizmoProcessor::setStateInformation (const void* data, int sizeInBytes)
     juce::MemoryInputStream raw (data, (size_t) sizeInBytes, false);
     juce::GZIPDecompressorInputStream in (raw);
 
-    if (in.readInt() != kStateMagic || in.readInt() < 1)
+    if (in.readInt() != kStateMagic)
+        return;
+
+    const auto version = in.readInt();
+
+    if (version < 1)
         return;
 
     if (auto xml = juce::parseXML (in.readString()))
@@ -502,6 +568,7 @@ void GizmoProcessor::setStateInformation (const void* data, int sizeInBytes)
         {
             auto tree = juce::ValueTree::fromXml (*xml);
             importMode = (int) tree.getProperty ("importMode", 0) == 1 ? ImportMode::chunks : ImportMode::cycles;
+            pattern.store ((juce::uint32) (int) tree.getProperty ("pattern", (int) kDefaultPattern) & ((1u << kMaxSteps) - 1u));
             apvts.replaceState (tree);
         }
     }
@@ -535,6 +602,31 @@ void GizmoProcessor::setStateInformation (const void* data, int sizeInBytes)
         table->name = name;
         table->sourcePath = path;
         table->pitchedFrames = pitched;
+
+        if (version >= 2)
+        {
+            table->sourceRate = in.readDouble();
+            table->rootNote = in.readFloat();
+            const auto count = in.readInt();
+
+            if (count > 0 && count <= (int) (kMaxImportSeconds * 400000.0))
+            {
+                std::vector<char> sourceBytes ((size_t) count * 2);
+
+                if (readFully (in, sourceBytes.data(), (int) sourceBytes.size()))
+                {
+                    table->source.resize ((size_t) count);
+
+                    for (size_t i = 0; i < table->source.size(); ++i)
+                    {
+                        const auto u = (juce::uint16) ((juce::uint8) sourceBytes[i * 2]
+                                                       | ((juce::uint16) (juce::uint8) sourceBytes[i * 2 + 1] << 8));
+                        table->source[i] = (float) (juce::int16) u / 32767.0f;
+                    }
+                }
+            }
+        }
+
         replaceTable (slot, std::move (table));
     }
 

@@ -586,6 +586,40 @@ ImportResult buildWavetableFromAudio (std::vector<float> x, double sampleRate, I
 
     result.table = buildWavetableFromFrames (frames.data());
     result.table->pitchedFrames = pitched;
+
+    // Keep the audible part of the sample for the B steps, peak-normalised.
+    auto& source = result.table->source;
+    source.assign (x.begin() + first, x.begin() + last);
+    float peak = 0.0f;
+
+    for (auto v : source)
+        peak = std::max (peak, std::abs (v));
+
+    if (peak > 0.0f)
+        for (auto& v : source)
+            v *= 0.9f / peak;
+
+    result.table->sourceRate = sampleRate;
+
+    // The sample's own pitch: the median of the periods found across it.
+    std::vector<double> periods;
+
+    for (int k = 0; k < 32; ++k)
+    {
+        const auto centre = regionStart + ((double) k + 0.5) / 32.0 * regionLength;
+        const auto estimate = detector.detect (x, (int) std::round (centre - detector.getWindowSize() * 0.5));
+
+        if (estimate.period > 0.0 && estimate.aperiodicity < 0.15)
+            periods.push_back (estimate.period);
+    }
+
+    if (periods.size() >= 4)
+    {
+        std::nth_element (periods.begin(), periods.begin() + (long) periods.size() / 2, periods.end());
+        const auto frequency = sampleRate / periods[periods.size() / 2];
+        result.table->rootNote = (float) (69.0 + 12.0 * std::log2 (frequency / 440.0));
+    }
+
     return result;
 }
 

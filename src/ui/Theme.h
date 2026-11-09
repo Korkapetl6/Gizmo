@@ -19,6 +19,7 @@ inline const juce::Colour accentB      { 0xff3cc6ab }; // teal
 inline const juce::Colour accentFilter { 0xffff9f5a }; // orange
 inline const juce::Colour accentLfo    { 0xff5fb2ff }; // blue
 inline const juce::Colour accentVoice  { 0xffb7aecb }; // soft grey-violet
+inline const juce::Colour accentFragment { 0xffff7aa8 }; // pink, the B steps of the sequence
 
 inline juce::Font font (float height, bool bold = false)
 {

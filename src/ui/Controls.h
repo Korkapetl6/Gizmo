@@ -49,4 +49,32 @@ private:
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Segmented)
 };
+
+/** Sixteen A/B steps: click to flip a step, drag to paint, the playing step lights up. */
+class PatternEditor : public juce::Component
+{
+public:
+    PatternEditor (juce::Colour colourA, juce::Colour colourB);
+
+    void setPattern (juce::uint32 bits, int length);
+    void setPlayingStep (int step);
+    void setActive (bool isActive);
+
+    std::function<void (juce::uint32)> onChange;
+
+    void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+
+private:
+    int stepAt (float x) const;
+    void paintStep (int step);
+
+    juce::uint32 bits = 0;
+    int length = 8, playing = -1, lastPainted = -1;
+    bool active = true, paintAsB = false;
+    juce::Colour colourA, colourB;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PatternEditor)
+};
 } // namespace gizmo

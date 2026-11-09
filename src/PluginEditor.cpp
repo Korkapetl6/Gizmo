@@ -17,8 +17,8 @@ void placeRow (std::initializer_list<juce::Component*> components, juce::Rectang
 
 GizmoEditor::Content::Content (GizmoProcessor& p)
     : processor (p),
-      viewA ("A", theme::accentA, pl ("Przeciągnij tu sampel albo kliknij, żeby wybrać plik")),
-      viewB ("B", theme::accentB, pl ("Upuść tu sampel, żeby B miał własny")),
+      viewA ("1", theme::accentA, pl ("Przeciągnij tu sampel albo kliknij, żeby wybrać plik")),
+      viewB ("2", theme::accentB, pl ("Upuść tu sampel, żeby oscylator 2 miał własny")),
       importMode (juce::StringArray (pl ("Cykle"), pl ("Kawałki")), theme::accentA),
       character (juce::StringArray (pl ("Czysto"), pl ("Surowo")), theme::accentA),
       voiceMode (juce::StringArray ("Poly", "Mono"), theme::accentVoice),
@@ -27,15 +27,20 @@ GizmoEditor::Content::Content (GizmoProcessor& p)
       lfoShape (juce::StringArray ("Sin", "Tri", pl ("Piła"), "Kw.", "Los"), theme::accentLfo),
       lfoSync (juce::StringArray ("Hz", "Tempo"), theme::accentLfo),
       lfoRetrig (juce::StringArray (pl ("Wspólne"), pl ("Od nuty")), theme::accentLfo),
+      seqOn (juce::StringArray (pl ("Wył."), pl ("Wł.")), theme::accentFragment),
+      seqStart (juce::StringArray (pl ("Wspólny"), pl ("Od nuty")), theme::accentFragment),
+      fragDirection (juce::StringArray (pl ("Przód"), pl ("Tył"), pl ("Przód-tył")), theme::accentFragment),
+      fragPitch (juce::StringArray (pl ("Klawisze"), pl ("Oryginał")), theme::accentFragment),
+      pattern (theme::accentA, theme::accentFragment),
       position (p.apvts, ParamID::position, pl ("Pozycja"), theme::accentA, "I"),
       velToPos (p.apvts, ParamID::velToPos, pl ("Velocity"), theme::accentA),
       wheelToPos (p.apvts, ParamID::wheelToPos, pl ("Kółko"), theme::accentA),
-      levelA (p.apvts, ParamID::levelA, pl ("Poziom A"), theme::accentA),
-      panA (p.apvts, ParamID::panA, pl ("Pan A"), theme::accentA),
-      levelB (p.apvts, ParamID::levelB, pl ("Poziom B"), theme::accentB),
-      panB (p.apvts, ParamID::panB, pl ("Pan B"), theme::accentB),
-      semiB (p.apvts, ParamID::semiB, pl ("Transp. B"), theme::accentB),
-      offsetB (p.apvts, ParamID::offsetB, pl ("Przesun. B"), theme::accentB),
+      levelA (p.apvts, ParamID::levelA, pl ("Poziom 1"), theme::accentA),
+      panA (p.apvts, ParamID::panA, pl ("Pan 1"), theme::accentA),
+      levelB (p.apvts, ParamID::levelB, pl ("Poziom 2"), theme::accentB),
+      panB (p.apvts, ParamID::panB, pl ("Pan 2"), theme::accentB),
+      semiB (p.apvts, ParamID::semiB, pl ("Transp. 2"), theme::accentB),
+      offsetB (p.apvts, ParamID::offsetB, pl ("Przesun. 2"), theme::accentB),
       detune (p.apvts, ParamID::detune, pl ("Rozstrojenie"), theme::accentA, "M"),
       glide (p.apvts, ParamID::glide, pl ("Glide"), theme::accentVoice),
       bendRange (p.apvts, ParamID::bendRange, pl ("Bend"), theme::accentVoice),
@@ -57,7 +62,12 @@ GizmoEditor::Content::Content (GizmoProcessor& p)
       lfoDivision (p.apvts, ParamID::lfoDivision, pl ("Podział"), theme::accentLfo),
       lfoToPos (p.apvts, ParamID::lfoToPos, pl ("Pozycja"), theme::accentLfo),
       lfoToCutoff (p.apvts, ParamID::lfoToCutoff, pl ("Cutoff"), theme::accentLfo),
-      lfoToPitch (p.apvts, ParamID::lfoToPitch, pl ("Wysokość"), theme::accentLfo)
+      lfoToPitch (p.apvts, ParamID::lfoToPitch, pl ("Wysokość"), theme::accentLfo),
+      seqLength (p.apvts, ParamID::seqLength, pl ("Długość"), theme::accentFragment),
+      seqRate (p.apvts, ParamID::seqRate, pl ("Krok"), theme::accentFragment),
+      fragOffset (p.apvts, ParamID::fragOffset, pl ("Przesunięcie"), theme::accentFragment),
+      fragTranspose (p.apvts, ParamID::fragTranspose, pl ("Transp. B"), theme::accentFragment),
+      fragLevel (p.apvts, ParamID::fragLevel, pl ("Poziom B"), theme::accentFragment)
 {
     auto attach = [&p] (Segmented& s, const char* id)
     {
@@ -72,13 +82,18 @@ GizmoEditor::Content::Content (GizmoProcessor& p)
     attach (lfoShape, ParamID::lfoShape);
     attach (lfoSync, ParamID::lfoSync);
     attach (lfoRetrig, ParamID::lfoRetrig);
+    attach (seqOn, ParamID::seqOn);
+    attach (seqStart, ParamID::seqStart);
+    attach (fragDirection, ParamID::fragDirection);
+    attach (fragPitch, ParamID::fragPitch);
 
     for (auto* c : std::initializer_list<juce::Component*> {
              &viewA, &viewB, &importMode, &character, &voiceMode, &frameMode, &filterOn, &lfoShape, &lfoSync,
              &lfoRetrig, &position, &velToPos, &wheelToPos, &levelA, &panA, &levelB, &panB, &semiB, &offsetB,
              &detune, &glide, &bendRange, &gain, &cutoff, &resonance, &keyTrack, &filterEnv, &fAttack, &fDecay,
              &fSustain, &fRelease, &attack, &decay, &sustain, &release, &velToAmp, &lfoRate, &lfoDivision,
-             &lfoToPos, &lfoToCutoff, &lfoToPitch })
+             &lfoToPos, &lfoToCutoff, &lfoToPitch, &seqOn, &seqStart, &fragDirection, &fragPitch, &pattern,
+             &seqLength, &seqRate, &fragOffset, &fragTranspose, &fragLevel })
         addAndMakeVisible (c);
 
     lfoDivision.setVisible (false);
@@ -90,6 +105,7 @@ GizmoEditor::Content::Content (GizmoProcessor& p)
         { pl ("Filtr"), { 16, 460, 968, 120 }, theme::accentFilter },
         { pl ("Obwiednia głośności"), { 16, 592, 480, 120 }, theme::accentA },
         { pl ("LFO"), { 508, 592, 476, 120 }, theme::accentLfo },
+        { pl ("Ciąg A/B"), { 16, 724, 968, 132 }, theme::accentFragment },
     };
 }
 
@@ -124,6 +140,14 @@ void GizmoEditor::Content::resized()
     lfoRate.setBounds (644, 616, 83, 92);
     lfoDivision.setBounds (644, 616, 83, 92);
     placeRow ({ &lfoToPos, &lfoToCutoff, &lfoToPitch }, { 727, 616, 249, 92 });
+
+    // Row 5: A/B sequence
+    seqOn.setBounds (900, 730, 76, 20);
+    pattern.setBounds (28, 752, 448, 40);
+    seqStart.setBounds (28, 818, 140, 22);
+    fragDirection.setBounds (176, 818, 168, 22);
+    fragPitch.setBounds (352, 818, 124, 22);
+    placeRow ({ &seqLength, &seqRate, &fragOffset, &fragTranspose, &fragLevel }, { 492, 748, 400, 92 });
 }
 
 void GizmoEditor::Content::paint (juce::Graphics& g)
@@ -164,18 +188,28 @@ void GizmoEditor::Content::paint (juce::Graphics& g)
     g.setColour (theme::textDim);
     g.setFont (theme::font (11.5f));
     g.drawText (pl ("obwiednia filtra"), juce::Rectangle<int> (512, 466, 200, 16), juce::Justification::centredLeft, false);
+
+    // A/B sequence
+    g.drawText (hasSample ? pl ("A gra falę, B fragment sampla 1 od miejsca, w którym jest Pozycja")
+                          : pl ("Wczytaj sampel do 1, żeby B miał co grać"),
+                juce::Rectangle<int> (110, 730, 600, 16), juce::Justification::centredLeft, false);
+    g.drawText (pl ("Start ciągu"), juce::Rectangle<int> (30, 801, 140, 14), juce::Justification::centredLeft, false);
+    g.drawText (pl ("Kierunek B"), juce::Rectangle<int> (178, 801, 160, 14), juce::Justification::centredLeft, false);
+    g.drawText (pl ("Strój B"), juce::Rectangle<int> (354, 801, 120, 14), juce::Justification::centredLeft, false);
 }
 
 //==============================================================================
 GizmoEditor::GizmoEditor (GizmoProcessor& p)
     : AudioProcessorEditor (p), processor (p), content (p)
 {
-    setLookAndFeel (&lookAndFeel);
+    // Add the content first, so the look-and-feel change reaches every control inside it.
     addAndMakeVisible (content);
+    setLookAndFeel (&lookAndFeel);
 
     content.viewA.onBrowse = [this] { browseFor (GizmoProcessor::slotA); };
     content.viewB.onBrowse = [this] { browseFor (GizmoProcessor::slotB); };
     content.viewB.onClear = [this] { processor.clearSlotB(); };
+    content.pattern.onChange = [this] (juce::uint32 bits) { processor.setPattern (bits); };
     content.importMode.onChange = [this] (int index)
     {
         processor.setImportMode (index == 1 ? ImportMode::chunks : ImportMode::cycles);
@@ -185,9 +219,9 @@ GizmoEditor::GizmoEditor (GizmoProcessor& p)
     refreshTables();
 
     setResizable (true, true);
-    setResizeLimits (700, 510, 1500, 1092);
+    setResizeLimits (700, 610, 1500, 1308);
     getConstrainer()->setFixedAspectRatio ((double) kDesignWidth / (double) kDesignHeight);
-    setSize (900, 655);
+    setSize (860, 750);
     startTimerHz (30);
 }
 
@@ -225,6 +259,14 @@ void GizmoEditor::refreshTables()
     content.viewA.setStatus (processor.isLoading (GizmoProcessor::slotA), processor.getError (GizmoProcessor::slotA));
     content.viewB.setStatus (processor.isLoading (GizmoProcessor::slotB), processor.getError (GizmoProcessor::slotB));
     content.importMode.setSelected (processor.getImportMode() == ImportMode::chunks ? 1 : 0);
+
+    const auto sample = a != nullptr && ! a->source.empty();
+
+    if (sample != content.hasSample)
+    {
+        content.hasSample = sample;
+        content.repaint();
+    }
 }
 
 void GizmoEditor::timerCallback()
@@ -255,6 +297,10 @@ void GizmoEditor::updateDisplay()
 
     content.viewA.setVoicePositions (markersA);
     content.viewB.setVoicePositions (markersB);
+
+    content.pattern.setPattern (processor.getPattern(), juce::roundToInt (value (ParamID::seqLength)));
+    content.pattern.setActive (value (ParamID::seqOn) > 0.5f);
+    content.pattern.setPlayingStep (engine.getDisplayStep());
 
     const auto synced = value (ParamID::lfoSync) > 0.5f;
     content.lfoRate.setVisible (! synced);

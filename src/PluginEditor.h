@@ -14,7 +14,7 @@ class GizmoEditor : public juce::AudioProcessorEditor,
 {
 public:
     static constexpr int kDesignWidth = 1000;
-    static constexpr int kDesignHeight = 728;
+    static constexpr int kDesignHeight = 872;
 
     explicit GizmoEditor (GizmoProcessor&);
     ~GizmoEditor() override;
@@ -43,12 +43,16 @@ private:
         GizmoProcessor& processor;
         gizmo::WavetableView viewA, viewB;
         gizmo::Segmented importMode, character, voiceMode, frameMode, filterOn, lfoShape, lfoSync, lfoRetrig;
+        gizmo::Segmented seqOn, seqStart, fragDirection, fragPitch;
+        gizmo::PatternEditor pattern;
         gizmo::Knob position, velToPos, wheelToPos;
         gizmo::Knob levelA, panA, levelB, panB, semiB, offsetB, detune;
         gizmo::Knob glide, bendRange, gain;
         gizmo::Knob cutoff, resonance, keyTrack, filterEnv, fAttack, fDecay, fSustain, fRelease;
         gizmo::Knob attack, decay, sustain, release, velToAmp;
         gizmo::Knob lfoRate, lfoDivision, lfoToPos, lfoToCutoff, lfoToPitch;
+        gizmo::Knob seqLength, seqRate, fragOffset, fragTranspose, fragLevel;
+        bool hasSample = false;
 
     private:
         struct Section

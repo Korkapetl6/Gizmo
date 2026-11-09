@@ -49,7 +49,25 @@ namespace ParamID
     inline constexpr const char* lfoToPos    = "lfoToPos";
     inline constexpr const char* lfoToCutoff = "lfoToCutoff";
     inline constexpr const char* lfoToPitch  = "lfoToPitch";
+
+    inline constexpr const char* seqOn         = "seqOn";
+    inline constexpr const char* seqLength     = "seqLength";
+    inline constexpr const char* seqRate       = "seqRate";
+    inline constexpr const char* seqStart      = "seqStart";
+    inline constexpr const char* fragOffset    = "fragOffset";
+    inline constexpr const char* fragDirection = "fragDirection";
+    inline constexpr const char* fragPitch     = "fragPitch";
+    inline constexpr const char* fragTranspose = "fragTranspose";
+    inline constexpr const char* fragLevel     = "fragLevel";
 } // namespace ParamID
+
+/** Step lengths of the A/B sequence, in quarter notes. Matches the seqRate choices. */
+inline constexpr double kSeqRateBeats[] = { 1.0, 0.5, 1.0 / 3.0, 0.25, 1.0 / 6.0, 0.125 };
+inline constexpr const char* kSeqRateNames[] = { "1/4", "1/8", "1/8T", "1/16", "1/16T", "1/32" };
+inline constexpr int kNumSeqRates = 6;
+inline constexpr int kDefaultSeqRate = 3; // 1/16
+inline constexpr int kMaxSteps = 16;
+inline constexpr juce::uint32 kDefaultPattern = 0x7c; // A A B B B B B A
 
 /** Tempo-synced LFO lengths, in quarter notes. Matches the lfoDivision choices. */
 inline constexpr double kLfoDivisionBeats[] = { 16.0, 8.0, 4.0, 2.0, 1.5, 1.0, 2.0 / 3.0, 0.75, 0.5, 1.0 / 3.0, 0.25, 1.0 / 6.0, 0.125 };
