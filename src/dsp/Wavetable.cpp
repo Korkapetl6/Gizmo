@@ -135,9 +135,17 @@ public:
 
     int getWindowSize() const noexcept { return window; }
 
-    /** Period in samples of the audio starting at 'start', or 0 if it isn't periodic. */
-    double detect (const std::vector<float>& x, int start)
+    struct Estimate
     {
+        double period = 0.0;     // in samples, 0 if the audio isn't periodic
+        double aperiodicity = 1.0; // YIN's normalised difference at the period: 0 = perfectly periodic
+        double rms = 0.0;
+    };
+
+    /** Period of the audio starting at 'start'. */
+    Estimate detect (const std::vector<float>& x, int start)
+    {
+        Estimate result;
         const int span = window + maxLag;
         std::fill (bufA.begin(), bufA.end(), 0.0f);
         std::fill (bufB.begin(), bufB.end(), 0.0f);
@@ -156,8 +164,10 @@ public:
         for (int i = 0; i < window; ++i)
             e0 += (double) bufA[(size_t) i] * (double) bufA[(size_t) i];
 
+        result.rms = std::sqrt (e0 / window);
+
         if (e0 < 1.0e-9 * window)
-            return 0.0;
+            return result;
 
         prefix[0] = 0.0;
 
@@ -218,7 +228,7 @@ public:
                     arg = tau;
 
             if (cmnd[(size_t) arg] > weakThreshold)
-                return 0.0;
+                return result;
 
             best = arg;
         }
@@ -234,7 +244,9 @@ public:
                 period += juce::jlimit (-0.5, 0.5, 0.5 * (a - c) / denom);
         }
 
-        return period;
+        result.period = period;
+        result.aperiodicity = cmnd[(size_t) best];
+        return result;
     }
 
 private:
@@ -512,18 +524,50 @@ ImportResult buildWavetableFromAudio (std::vector<float> x, double sampleRate, I
     std::vector<float> frames ((size_t) kNumFrames * kFrameSize, 0.0f);
     int pitched = 0;
 
+    // Loudness of the whole region, so quiet spots (breaths, tails) can be avoided.
+    double regionEnergy = 0.0;
+
+    for (int i = first; i < last; ++i)
+        regionEnergy += (double) x[(size_t) i] * (double) x[(size_t) i];
+
+    const auto regionRms = std::sqrt (regionEnergy / regionLength);
+    const auto spacing = regionLength / (double) kNumFrames;
+
     for (int f = 0; f < kNumFrames; ++f)
     {
-        const auto centre = regionStart + ((double) f + 0.5) / (double) kNumFrames * regionLength;
+        const auto centre = regionStart + ((double) f + 0.5) * spacing;
         auto* frame = frames.data() + (size_t) f * kFrameSize;
-        double period = 0.0;
+        double period = 0.0, cycleCentre = centre;
 
         if (mode == ImportMode::cycles)
-            period = detector.detect (x, (int) std::round (centre - detector.getWindowSize() * 0.5));
+        {
+            // Look around the frame's slot for the steadiest, loudest spot, so frames don't land
+            // on note changes or breaths. The search stays inside the slot to keep the order.
+            auto bestScore = std::numeric_limits<double>::max();
+
+            for (int j = -4; j <= 4; ++j)
+            {
+                const auto candidate = centre + (double) j * spacing / 8.0;
+                const auto estimate = detector.detect (x, (int) std::round (candidate - detector.getWindowSize() * 0.5));
+
+                if (estimate.period <= 0.0)
+                    continue;
+
+                const auto quietness = 1.0 - std::min (1.0, estimate.rms / std::max (1.0e-9, regionRms));
+                const auto score = estimate.aperiodicity + 0.2 * quietness + 0.01 * std::abs ((double) j);
+
+                if (score < bestScore)
+                {
+                    bestScore = score;
+                    period = estimate.period;
+                    cycleCentre = candidate;
+                }
+            }
+        }
 
         if (period > 0.0)
         {
-            extractCycle (x, centre, period, frame);
+            extractCycle (x, cycleCentre, period, frame);
             ++pitched;
         }
         else

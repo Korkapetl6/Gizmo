@@ -229,9 +229,26 @@ struct Render
     std::vector<float> left, right;
 };
 
-Render render (GizmoProcessor& p, double seconds, const std::vector<Note>& notes,
-               std::function<void (double)> automation = {}, double sr = 48000.0, int block = 512)
+/** A host transport that is always playing at a fixed tempo. */
+struct DemoPlayHead : public juce::AudioPlayHead
 {
+    double bpm = 120.0, seconds = 0.0;
+
+    juce::Optional<PositionInfo> getPosition() const override
+    {
+        PositionInfo info;
+        info.setBpm (bpm);
+        info.setPpqPosition (seconds * bpm / 60.0);
+        info.setIsPlaying (true);
+        return info;
+    }
+};
+
+Render render (GizmoProcessor& p, double seconds, const std::vector<Note>& notes,
+               std::function<void (double)> automation = {}, double sr = 48000.0, int block = 512,
+               DemoPlayHead* playHead = nullptr)
+{
+    p.setPlayHead (playHead);
     p.prepareToPlay (sr, block);
     Render out;
     const auto total = (int) (seconds * sr);
@@ -256,6 +273,9 @@ Render render (GizmoProcessor& p, double seconds, const std::vector<Note>& notes
 
         if (automation)
             automation ((double) pos / sr);
+
+        if (playHead != nullptr)
+            playHead->seconds = (double) pos / sr;
 
         p.processBlock (buffer, midi);
         out.left.insert (out.left.end(), buffer.getReadPointer (0), buffer.getReadPointer (0) + n);
@@ -388,12 +408,192 @@ double brightness (const std::vector<float>& x, double sr = 48000.0)
 
     return weighted / std::max (1.0e-30, total);
 }
+
+//==============================================================================
+// Demo mode: GizmoTests --demo <sample> <output folder>
+// Renders a few musical examples with a real sample, at 75 BPM in A-flat major.
+
+std::unique_ptr<Wavetable> copyOf (const Wavetable& t)
+{
+    auto c = buildWavetableFromFrames (t.frames.data());
+    c->name = t.name;
+    c->sourcePath = t.sourcePath;
+    c->pitchedFrames = t.pitchedFrames;
+    return c;
+}
+
+void setParams (GizmoProcessor& p, std::initializer_list<std::pair<const char*, float>> values)
+{
+    for (const auto& [id, value] : values)
+        setParam (p, id, value);
+}
+
+int runDemo (const juce::File& sample, const juce::File& outDir)
+{
+    outDir.createDirectory();
+    juce::AudioFormatManager formats;
+    formats.registerBasicFormats();
+
+    auto cycles = loadWavetableFromFile (sample, ImportMode::cycles, formats);
+    auto chunks = loadWavetableFromFile (sample, ImportMode::chunks, formats);
+
+    if (cycles.table == nullptr || chunks.table == nullptr)
+    {
+        std::cout << "Import failed: " << cycles.error << " " << chunks.error << std::endl;
+        return 1;
+    }
+
+    std::cout << sample.getFileName() << ": " << cycles.table->pitchedFrames << " of 64 frames cut as cycles" << std::endl;
+
+    constexpr double sr = 48000.0, bpm = 75.0, beat = 60.0 / bpm, bar = 4.0 * beat;
+    DemoPlayHead playHead;
+    playHead.bpm = bpm;
+
+    writeWav (outDir.getChildFile ("table_cycles.wav"), tablePreview (*cycles.table, sr), nullptr, sr);
+    writeWav (outDir.getChildFile ("table_chunks.wav"), tablePreview (*chunks.table, sr), nullptr, sr);
+
+    // Abmaj7, Fm7, Dbmaj7, Eb6
+    const std::vector<std::vector<int>> progression { { 56, 63, 67, 72 }, { 53, 60, 63, 68 }, { 49, 56, 60, 65 }, { 51, 58, 63, 67 } };
+
+    auto report = [] (const char* name, const Render& r)
+    {
+        const auto s = analyse (r.left);
+        std::cout << "  " << name << ": peak " << s.peak << ", rms " << s.rms << (s.finite ? "" : "  NOT FINITE") << std::endl;
+    };
+
+    // 1. Pad: cycles, smooth, a slow tempo-synced LFO sweeping the position
+    {
+        GizmoProcessor p;
+        p.replaceTable (GizmoProcessor::slotA, copyOf (*cycles.table));
+        setParams (p, { { ParamID::position, 0.45f }, { ParamID::levelA, 0.8f }, { ParamID::panA, -0.35f },
+                        { ParamID::levelB, 0.65f }, { ParamID::panB, 0.35f }, { ParamID::offsetB, 0.3f },
+                        { ParamID::detune, 12.0f }, { ParamID::attack, 0.7f }, { ParamID::decay, 1.5f },
+                        { ParamID::sustain, 0.85f }, { ParamID::release, 2.0f }, { ParamID::velToAmp, 0.3f },
+                        { ParamID::cutoff, 4500.0f }, { ParamID::resonance, 0.15f }, { ParamID::keyTrack, 0.3f },
+                        { ParamID::lfoShape, 0.0f }, { ParamID::lfoSync, 1.0f }, { ParamID::lfoDivision, 1.0f },
+                        { ParamID::lfoToPos, 0.8f }, { ParamID::gain, -12.0f } });
+
+        std::vector<Note> notes;
+
+        for (size_t c = 0; c < progression.size(); ++c)
+            for (auto n : progression[c])
+                notes.push_back ({ (double) c * bar + 0.02, bar - 0.05, n, 0.7f });
+
+        const auto r = render (p, 4.0 * bar + 2.5, notes, {}, sr, 512, &playHead);
+        report ("pad", r);
+        writeWav (outDir.getChildFile ("demo1_pad.wav"), r.left, &r.right, sr);
+    }
+
+    // 2. Arpeggio: chunks, stepped, raw, a random LFO jumping on every sixteenth
+    {
+        GizmoProcessor p;
+        p.replaceTable (GizmoProcessor::slotA, copyOf (*chunks.table));
+        setParams (p, { { ParamID::position, 0.5f }, { ParamID::frameMode, 1.0f }, { ParamID::character, 1.0f },
+                        { ParamID::levelA, 0.8f }, { ParamID::panA, -0.25f }, { ParamID::levelB, 0.45f },
+                        { ParamID::panB, 0.25f }, { ParamID::semiB, 12.0f }, { ParamID::offsetB, 0.4f },
+                        { ParamID::detune, 7.0f }, { ParamID::attack, 0.002f }, { ParamID::decay, 0.22f },
+                        { ParamID::sustain, 0.25f }, { ParamID::release, 0.15f }, { ParamID::velToAmp, 0.6f },
+                        { ParamID::cutoff, 2500.0f }, { ParamID::resonance, 0.45f }, { ParamID::keyTrack, 0.4f },
+                        { ParamID::filterEnv, 0.45f }, { ParamID::fAttack, 0.001f }, { ParamID::fDecay, 0.18f },
+                        { ParamID::fSustain, 0.0f }, { ParamID::fRelease, 0.15f }, { ParamID::lfoShape, 4.0f },
+                        { ParamID::lfoSync, 1.0f }, { ParamID::lfoDivision, 10.0f }, { ParamID::lfoToPos, 1.0f },
+                        { ParamID::velToPos, 0.3f }, { ParamID::gain, -8.0f } });
+
+        const int pattern[] = { 0, 1, 2, 3, 4, 5, 6, 7, 6, 5, 4, 3, 2, 1, 0, 1 };
+        std::vector<Note> notes;
+        const auto sixteenth = beat / 4.0;
+
+        for (size_t c = 0; c < progression.size(); ++c)
+        {
+            std::vector<int> tones (progression[c]);
+
+            for (auto n : progression[c])
+                tones.push_back (n + 12);
+
+            for (int k = 0; k < 16; ++k)
+            {
+                const auto velocity = k % 4 == 0 ? 0.95f : 0.55f + 0.1f * (float) (k % 3);
+                notes.push_back ({ (double) c * bar + k * sixteenth + 0.01, sixteenth * 0.6, tones[(size_t) pattern[k]], velocity });
+            }
+        }
+
+        const auto r = render (p, 4.0 * bar + 1.0, notes, {}, sr, 512, &playHead);
+        report ("arpeggio", r);
+        writeWav (outDir.getChildFile ("demo2_arpeggio.wav"), r.left, &r.right, sr);
+    }
+
+    // 3. Lead: cycles, mono with glide, the LFO restarting with every note so each one sweeps the table
+    {
+        GizmoProcessor p;
+        p.replaceTable (GizmoProcessor::slotA, copyOf (*cycles.table));
+        setParams (p, { { ParamID::position, 0.15f }, { ParamID::voiceMode, 1.0f }, { ParamID::glide, 0.07f },
+                        { ParamID::levelA, 0.85f }, { ParamID::panA, -0.15f }, { ParamID::levelB, 0.4f },
+                        { ParamID::panB, 0.15f }, { ParamID::semiB, -12.0f }, { ParamID::offsetB, 0.25f },
+                        { ParamID::detune, 9.0f }, { ParamID::attack, 0.01f }, { ParamID::decay, 0.6f },
+                        { ParamID::sustain, 0.75f }, { ParamID::release, 0.35f }, { ParamID::velToAmp, 0.4f },
+                        { ParamID::cutoff, 1200.0f }, { ParamID::resonance, 0.25f }, { ParamID::keyTrack, 0.5f },
+                        { ParamID::filterEnv, 0.35f }, { ParamID::fDecay, 0.5f }, { ParamID::fSustain, 0.3f },
+                        { ParamID::fRelease, 0.3f }, { ParamID::lfoShape, 2.0f }, { ParamID::lfoSync, 0.0f },
+                        { ParamID::lfoRate, 0.35f }, { ParamID::lfoRetrig, 1.0f }, { ParamID::lfoToPos, 0.9f },
+                        { ParamID::gain, -8.0f } });
+
+        const std::pair<int, double> melody[] = { { 63, 1.0 }, { 65, 0.5 }, { 68, 1.5 }, { 72, 1.0 },
+                                                  { 70, 0.5 }, { 68, 0.5 }, { 65, 1.0 }, { 63, 2.0 },
+                                                  { 60, 1.0 }, { 63, 0.5 }, { 65, 1.5 }, { 68, 1.0 },
+                                                  { 67, 0.5 }, { 65, 0.5 }, { 63, 1.0 }, { 68, 2.0 } };
+        std::vector<Note> notes;
+        double t = 0.02;
+        int i = 0;
+
+        for (const auto& [note, beats] : melody)
+        {
+            notes.push_back ({ t, beats * beat * 0.9, note, 0.6f + 0.1f * (float) (i++ % 4) });
+            t += beats * beat;
+        }
+
+        const auto r = render (p, t + 1.5, notes, {}, sr, 512, &playHead);
+        report ("lead", r);
+        writeWav (outDir.getChildFile ("demo3_lead.wav"), r.left, &r.right, sr);
+    }
+
+    // Editor with the sample loaded
+    {
+        GizmoProcessor p;
+        p.replaceTable (GizmoProcessor::slotA, copyOf (*cycles.table));
+        setParams (p, { { ParamID::position, 0.45f }, { ParamID::offsetB, 0.3f }, { ParamID::detune, 12.0f },
+                        { ParamID::cutoff, 4500.0f }, { ParamID::lfoSync, 1.0f }, { ParamID::lfoDivision, 1.0f },
+                        { ParamID::lfoToPos, 0.8f } });
+        render (p, 1.0, { { 0.0, 2.0, 56, 0.7f }, { 0.0, 2.0, 63, 0.7f }, { 0.0, 2.0, 67, 0.7f } }, {}, sr, 512, &playHead);
+
+        std::unique_ptr<juce::AudioProcessorEditor> editor (p.createEditor());
+        editor->setSize (GizmoEditor::kDesignWidth, GizmoEditor::kDesignHeight);
+
+        if (auto* e = dynamic_cast<GizmoEditor*> (editor.get()))
+            e->updateDisplay();
+
+        const auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, 2.0f);
+        const auto file = outDir.getChildFile ("editor.png");
+        file.deleteFile();
+
+        if (auto stream = file.createOutputStream())
+        {
+            juce::PNGImageFormat png;
+            png.writeImageToStream (image, *stream);
+        }
+    }
+
+    return 0;
+}
 } // namespace
 
 //==============================================================================
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI init;
+
+    if (argc > 3 && juce::String (argv[1]) == "--demo")
+        return runDemo (juce::File (juce::String::fromUTF8 (argv[2])), juce::File (juce::String::fromUTF8 (argv[3])));
+
     const juce::File outDir (argc > 1 ? juce::String (argv[1]) : juce::File::getCurrentWorkingDirectory().getFullPathName());
     outDir.createDirectory();
     constexpr double sr = 44100.0;
