@@ -79,6 +79,18 @@ public:
 private:
     enum class Stage { idle, attack, decay, sustain, release };
 
+public:
+    /** Phase and frame state of one oscillator. */
+    struct OscState
+    {
+        double phase = 0.0;
+        int frame = -1;     // frame held for the current cycle (stepped mode)
+        int prevFrame = -1; // frame being faded out after a switch
+        int fadeLeft = 0, fadeLength = 0;
+    };
+
+private:
+
     struct Voice
     {
         Stage stage = Stage::idle;
@@ -87,8 +99,7 @@ private:
         bool keyDown = false, sustained = false;
         float env = 0.0f;
         float pitch = 60.0f, targetPitch = 60.0f;
-        double phaseA = 0.0, phaseB = 0.0;
-        int frameA = -1, frameB = -1; // latched frames for stepped mode
+        OscState oscA, oscB;
         juce::uint32 age = 0;
 
         Stage filterStage = Stage::idle;

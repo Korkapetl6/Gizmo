@@ -163,28 +163,6 @@ void checkTable (const Wavetable& t, const juce::String& name, int minPitched, i
            name + ": pitched frames within " + juce::String (minPitched) + ".." + juce::String (maxPitched));
 }
 
-/** One frame after another, each repeated for 60 ms at 110 Hz: lets you hear the table. */
-std::vector<float> tablePreview (const Wavetable& t, double sr)
-{
-    std::vector<float> out;
-    double phase = 0.0;
-
-    for (int f = 0; f < kNumFrames; ++f)
-    {
-        for (int i = 0; i < (int) (0.06 * sr); ++i)
-        {
-            const auto* m = t.getMip (3, f);
-            const auto x = phase * kFrameSize;
-            const auto k = (int) x;
-            out.push_back (0.5f * (m[k] + (float) (x - k) * (m[k + 1] - m[k])));
-            phase += 110.0 / sr;
-            phase -= std::floor (phase);
-        }
-    }
-
-    return out;
-}
-
 void writeWav (const juce::File& file, const std::vector<float>& left, const std::vector<float>* right, double sr)
 {
     file.deleteFile();
@@ -449,8 +427,23 @@ int runDemo (const juce::File& sample, const juce::File& outDir)
     DemoPlayHead playHead;
     playHead.bpm = bpm;
 
-    writeWav (outDir.getChildFile ("table_cycles.wav"), tablePreview (*cycles.table, sr), nullptr, sr);
-    writeWav (outDir.getChildFile ("table_chunks.wav"), tablePreview (*chunks.table, sr), nullptr, sr);
+    // The table itself, played by the plugin: one held note while the position goes from frame 1 to 64.
+    for (auto stepped : { false, true })
+    {
+        GizmoProcessor p;
+        p.replaceTable (GizmoProcessor::slotA, copyOf (*cycles.table));
+        setParams (p, { { ParamID::position, 0.0f }, { ParamID::frameMode, stepped ? 1.0f : 0.0f },
+                        { ParamID::levelB, 0.0f }, { ParamID::detune, 0.0f }, { ParamID::panA, 0.0f },
+                        { ParamID::filterOn, 0.0f }, { ParamID::attack, 0.01f }, { ParamID::sustain, 1.0f },
+                        { ParamID::release, 0.3f }, { ParamID::velToAmp, 0.0f } });
+
+        const auto r = render (p, 5.0, { { 0.0, 4.6, 56, 0.8f } },
+                               [&p] (double t) { setParam (p, ParamID::position, (float) juce::jlimit (0.0, 1.0, (t - 0.2) / 4.0)); },
+                               sr, 512, &playHead);
+        const auto s = analyse (r.left);
+        std::cout << "  sweep " << (stepped ? "stepped" : "smooth") << ": click ratio " << s.clickRatio << std::endl;
+        writeWav (outDir.getChildFile (stepped ? "sweep_stepped.wav" : "sweep_smooth.wav"), r.left, &r.right, sr);
+    }
 
     // Abmaj7, Fm7, Dbmaj7, Eb6
     const std::vector<std::vector<int>> progression { { 56, 63, 67, 72 }, { 53, 60, 63, 68 }, { 49, 56, 60, 65 }, { 51, 58, 63, 67 } };
@@ -625,8 +618,6 @@ int main (int argc, char** argv)
         check (brightness (last, kFrameSize) > brightness (first, kFrameSize) * 2.0, "saw sweep: later frames are brighter");
     }
 
-    writeWav (outDir.getChildFile ("table_vowels.wav"), tablePreview (*vowelTable, sr), nullptr, sr);
-    writeWav (outDir.getChildFile ("table_saw_sweep.wav"), tablePreview (*sawTable, sr), nullptr, sr);
 
     std::cout << "Decimator" << std::endl;
     {
@@ -699,8 +690,7 @@ int main (int argc, char** argv)
         std::cout << "  " << name << ": peak " << s.peak << ", rms " << s.rms << ", click ratio " << s.clickRatio << std::endl;
         check (s.finite && s.peak > 0.05f && s.peak < 1.5f, name + ": sane level");
 
-        if (! stepped)
-            check (s.clickRatio < 8.0f, name + ": no clicks");
+        check (s.clickRatio < 8.0f, name + ": no clicks");
 
         writeWav (outDir.getChildFile (stepped ? "demo_stepped_sweep.wav" : "demo_smooth_sweep.wav"), r.left, &r.right, rsr);
     }

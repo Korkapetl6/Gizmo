@@ -21,43 +21,64 @@ inline void panGains (float pan, float level, float& left, float& right) noexcep
     right = std::sin (angle) * level;
 }
 
-/** Reads one sample of an oscillator and advances its phase.
-    In stepped mode the frame only changes when the cycle wraps around, like an Ensoniq transwave. */
-inline float readOscillator (const Wavetable& table, int level, float framePos, double& phase, double increment,
-                             int& latchedFrame, bool stepped) noexcept
+inline float readFrame (const float* m, int i, float frac) noexcept
 {
-    const auto x = phase * (double) kFrameSize;
+    return m[i] + frac * (m[i + 1] - m[i]);
+}
+
+/** Reads one sample of an oscillator and advances its phase.
+    In stepped mode the frame only changes when the cycle wraps around, like an Ensoniq transwave.
+    The new frame is faded in over at most one cycle (and at most 'maxFade' samples), so the jump
+    between two different waveforms doesn't click. */
+inline float readOscillator (const Wavetable& table, int level, float framePos, SynthEngine::OscState& s,
+                             double increment, bool stepped, int maxFade) noexcept
+{
+    const auto x = s.phase * (double) kFrameSize;
     const auto i = (int) x;
     const auto frac = (float) (x - (double) i);
     float out;
 
     if (stepped)
     {
-        if (latchedFrame < 0)
-            latchedFrame = juce::roundToInt (framePos);
+        if (s.frame < 0)
+            s.frame = juce::roundToInt (framePos);
 
-        const auto* m = table.getMip (level, latchedFrame);
-        out = m[i] + frac * (m[i + 1] - m[i]);
+        out = readFrame (table.getMip (level, s.frame), i, frac);
+
+        if (s.fadeLeft > 0)
+        {
+            const auto previous = readFrame (table.getMip (level, s.prevFrame), i, frac);
+            out += (previous - out) * (float) s.fadeLeft / (float) s.fadeLength;
+            --s.fadeLeft;
+        }
     }
     else
     {
         const auto k0 = std::min ((int) framePos, kNumFrames - 2);
         const auto t = framePos - (float) k0;
         const auto* m0 = table.getMip (level, k0);
-        const auto* m1 = m0 + kMipStride;
-        const auto a = m0[i] + frac * (m0[i + 1] - m0[i]);
-        const auto b = m1[i] + frac * (m1[i + 1] - m1[i]);
+        const auto a = readFrame (m0, i, frac);
+        const auto b = readFrame (m0 + kMipStride, i, frac);
         out = a + t * (b - a);
     }
 
-    phase += increment;
+    s.phase += increment;
 
-    if (phase >= 1.0)
+    if (s.phase >= 1.0)
     {
-        phase -= std::floor (phase);
+        s.phase -= std::floor (s.phase);
 
-        if (stepped)
-            latchedFrame = juce::roundToInt (framePos);
+        if (stepped && s.fadeLeft == 0)
+        {
+            const auto next = juce::roundToInt (framePos);
+
+            if (next != s.frame)
+            {
+                s.prevFrame = s.frame;
+                s.frame = next;
+                s.fadeLength = s.fadeLeft = std::max (1, std::min (maxFade, (int) (1.0 / increment)));
+            }
+        }
     }
 
     return out;
@@ -371,6 +392,7 @@ void SynthEngine::renderVoice (Voice& v, int numInternal, const EngineParams& p,
     const auto lfoInc = lfoFrequency (p) * (double) kSub / internalRate;
     const auto maxCutoff = (float) std::min (24000.0, internalRate * 0.45);
     const auto resonantQ = 1.3066f * (1.0f + 8.0f * p.resonance * p.resonance);
+    const auto stepFade = std::max (1, (int) (0.0015 * internalRate));
 
     float aL, aR, bL, bR;
     panGains (p.panA, p.levelA, aL, aR);
@@ -439,12 +461,12 @@ void SynthEngine::renderVoice (Voice& v, int numInternal, const EngineParams& p,
             float outA = 0.0f, outB = 0.0f;
 
             if (useA)
-                outA = readOscillator (tableA, levelA, posA * lastFrame, v.phaseA, incA, v.frameA, p.steppedFrames);
+                outA = readOscillator (tableA, levelA, posA * lastFrame, v.oscA, incA, p.steppedFrames, stepFade);
 
             if (useB)
             {
                 const auto posB = juce::jlimit (0.0f, 1.0f, posA + p.offsetB);
-                outB = readOscillator (tableB, levelB, posB * lastFrame, v.phaseB, incB, v.frameB, p.steppedFrames);
+                outB = readOscillator (tableB, levelB, posB * lastFrame, v.oscB, incB, p.steppedFrames, stepFade);
             }
 
             auto left = outA * aL + outB * bL;
@@ -630,8 +652,8 @@ void SynthEngine::startVoice (Voice& v, int note, float velocity, const EnginePa
         // A fresh voice starts from silence, so resetting phases and filter can't click.
         v.env = 0.0f;
         v.filterEnvLevel = 0.0f;
-        v.phaseA = 0.0;
-        v.phaseB = random.nextDouble();
+        v.oscA.phase = 0.0;
+        v.oscB.phase = random.nextDouble();
         std::fill (&v.svf1[0][0], &v.svf1[0][0] + 4, 0.0f);
         std::fill (&v.svf2[0][0], &v.svf2[0][0] + 4, 0.0f);
     }
@@ -639,7 +661,12 @@ void SynthEngine::startVoice (Voice& v, int note, float velocity, const EnginePa
     // A stolen voice keeps its phase and envelope level, so it doesn't click either.
     v.lfoPhase = 0.0;
     v.lfoRandom = random.nextFloat() * 2.0f - 1.0f;
-    v.frameA = v.frameB = -1;
+    for (auto* osc : { &v.oscA, &v.oscB })
+    {
+        osc->frame = -1;
+        osc->fadeLeft = 0;
+    }
+
     v.stage = Stage::attack;
     v.filterStage = Stage::attack;
     v.age = ++voiceCounter;
