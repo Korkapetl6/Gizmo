@@ -95,3 +95,5 @@ if(GIZMO_BUILD_TESTS)
             juce::juce_recommended_config_flags
             juce::juce_recommended_warning_flags)
 endif()
+
+add_subdirectory(solista)
