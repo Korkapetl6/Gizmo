@@ -97,3 +97,4 @@ if(GIZMO_BUILD_TESTS)
 endif()
 
 add_subdirectory(solista)
+add_subdirectory(dedal)

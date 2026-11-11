@@ -45,6 +45,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Compress-Archive -Path "build/Gizmo_artefacts/Release/VST3/Gizmo.vst3" -DestinationPath "dist/Gizmo-Windows-VST3.zip"
           Compress-Archive -Path "build/solista/Solista_artefacts/Release/VST3/Solista.vst3" -DestinationPath "dist/Solista-Windows-VST3.zip"
+          Compress-Archive -Path "build/dedal/Dedal_artefacts/Release/VST3/Dedal.vst3" -DestinationPath "dist/Dedal-Windows-VST3.zip"
 
       - name: Package (macOS)
         if: runner.os == 'macOS'
@@ -60,6 +61,11 @@ jobs:
           codesign --force --deep --sign - AU/Solista.component
           ditto -c -k --keepParent VST3/Solista.vst3 "$GITHUB_WORKSPACE/dist/Solista-macOS-VST3.zip"
           ditto -c -k --keepParent AU/Solista.component "$GITHUB_WORKSPACE/dist/Solista-macOS-AU.zip"
+          cd "$GITHUB_WORKSPACE/build/dedal/Dedal_artefacts/Release"
+          codesign --force --deep --sign - VST3/Dedal.vst3
+          codesign --force --deep --sign - AU/Dedal.component
+          ditto -c -k --keepParent VST3/Dedal.vst3 "$GITHUB_WORKSPACE/dist/Dedal-macOS-VST3.zip"
+          ditto -c -k --keepParent AU/Dedal.component "$GITHUB_WORKSPACE/dist/Dedal-macOS-AU.zip"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -84,5 +90,5 @@ jobs:
           gh release delete latest --yes --cleanup-tag || true
           gh release create latest dist/*.zip \
             --target "${{ github.sha }}" \
-            --title "Gizmo i Solista (najnowsza wersja)" \
+            --title "Gizmo, Solista i Dedal (najnowsza wersja)" \
             --notes "Zbudowane automatycznie z commita ${{ github.sha }}. Instrukcja instalacji jest w README."

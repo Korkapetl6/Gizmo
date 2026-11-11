@@ -4,11 +4,13 @@ Syntezator VST3 inspirowany Ensoniq Fizmo. Przeciągasz na niego dowolny sampel,
 
 ![Gizmo](docs/gizmo.png)
 
-> W tym repozytorium jest też druga wtyczka: **[Solista](solista/README.md)**, generator solówek gitarowych z bendami i vibrato, z którego przeciągasz MIDI na ścieżkę.
+> W tym repozytorium są też dwie inne wtyczki:
+> - **[Solista](solista/README.md)**: generator solówek gitarowych z bendami i vibrato, z którego przeciągasz MIDI na ścieżkę.
+> - **[Dedal](dedal/README.md)**: generatywny syntezator z trzema mutującymi sekwencerami, wavefolderem, filtrem, bankami fal z Beads i wyjściem MIDI.
 
 ## Pobieranie i instalacja
 
-Gotowe pliki są w zakładce **Releases** → *Gizmo i Solista (najnowsza wersja)*. Każda zmiana w kodzie automatycznie buduje nową wersję.
+Gotowe pliki są w zakładce **Releases** → *Gizmo, Solista i Dedal (najnowsza wersja)*. Każda zmiana w kodzie automatycznie buduje nową wersję.
 
 ### Windows
 
@@ -74,7 +76,7 @@ Testy offline (import, aliasing, filtr, zapis stanu, zrzut interfejsu; dla Solis
 
 ```
 cmake -B build -DGIZMO_BUILD_TESTS=ON
-cmake --build build --target GizmoTests SolistaTests
+cmake --build build --target GizmoTests SolistaTests DedalTests
 ```
 
 Gizmo używa frameworka [JUCE](https://juce.com), który jest dostępny na licencji AGPLv3 albo komercyjnej.
