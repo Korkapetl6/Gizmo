@@ -49,3 +49,7 @@ Nuty wysyła jako MIDI (ustawienie ścieżki jak w Dedalu), ostatnie takty możn
 ## Czego nie sprawdziłem
 
 Testy offline przechodzą (normalizacje, zegar z kabla, RESET, audio przez kabel, strojenie, zapis kabli). Wtyczka nie była uruchomiona w Abletonie i nie porównywałem jej ze sprzętem: zakresy gałek i charakter brzmienia są przybliżone według instrukcji.
+
+## Presety według instrukcji
+
+Dwanaście ostatnich presetów fabrycznych (*A Simple Start* … *The Ooze*) powstało na podstawie opisów przykładowych patchy z instrukcji sprzętu: skala, kable, włączone bity i to, które gałki są w patchu ważne. Pozycje gałek są w instrukcji tylko na rysunkach, więc ustawiłem je sam według opisu brzmienia. To przybliżenia, nie kopie.
