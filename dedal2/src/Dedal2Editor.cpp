@@ -323,10 +323,10 @@ public:
         knob (ID::modSeq2, "SEQ2 AMT", theme::accentLfo);
         knob (ID::fm, "FM AMT", theme::accentLfo);
         knob (ID::lvlVco, "VCO LVL", theme::accentVoice);
-        knob (ID::lvlRing, "U MIX 1 (RING)", theme::accentVoice);
-        knob (ID::lvlMod, "MOD VCO LVL", theme::accentVoice);
+        knob (ID::lvlRing, "RING LVL", theme::accentVoice);
+        knob (ID::lvlMod, "MOD LVL", theme::accentVoice);
         knob (ID::lvlNoise, "NOISE LVL", theme::accentVoice);
-        knob (ID::noiseTone, "NOISE TONE", theme::accentVoice);
+        knob (ID::noiseTone, "TONE", theme::accentVoice);
         knob (ID::fold, "FOLD", theme::accentFragment);
         knob (ID::bias, "BIAS", theme::accentFragment);
         knob (ID::foldEg, "EG1/CV AMT", theme::accentFragment);
@@ -335,10 +335,10 @@ public:
         knob (ID::resonance, "RESONANCE", theme::accentFilter);
         knob (ID::cutEg, "EG1/CV AMT", theme::accentFilter);
         knob (ID::cutSeq, "SEQ2 AMT", theme::accentFilter);
-        knob (ID::mode, "FILTER MODE", theme::accentFilter);
+        knob (ID::mode, "MODE", theme::accentFilter);
         knob (ID::eg1Decay, "EG1 DECAY", theme::accentB);
         knob (ID::eg2Decay, "EG2 DECAY", theme::accentB);
-        knob (ID::trigMix, "EG TRIG MIX", theme::accentB);
+        knob (ID::trigMix, "TRIG MIX", theme::accentB);
         knob (ID::blend, "BLEND", theme::accentA);
         knob (ID::volume, "VOLUME", theme::accentA);
         knob (ID::gate, pl ("Długość nut"), theme::accentLfo);
@@ -401,9 +401,18 @@ public:
 
         auto row = [this] (int x, int y, std::initializer_list<const char*> ids, int width)
         {
+            // Main parameters get the full-size knob; modulation amounts and mixer levels a smaller one.
+            static const juce::StringArray small { ID::vcoEg1, ID::vcoSeq1, ID::modEg1, ID::modSeq2, ID::fm, ID::lvlVco, ID::lvlRing,
+                                                   ID::lvlMod, ID::lvlNoise, ID::noiseTone, ID::bias, ID::foldEg, ID::foldSeq,
+                                                   ID::cutEg, ID::cutSeq, ID::mode, ID::trigMix };
+
             for (const auto* id : ids)
             {
-                place (id, x, y, width, 104);
+                if (small.contains (id))
+                    place (id, x + 7, y + 18, width - 14, 86);
+                else
+                    place (id, x - 3, y - 2, width + 6, 110);
+
                 x += width;
             }
         };
