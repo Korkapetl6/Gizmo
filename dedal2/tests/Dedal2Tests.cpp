@@ -272,7 +272,7 @@ void demos (const juce::File& dir)
         std::cout << p.getFactoryPresetNames()[i] << ": peak " << r.peak() << std::endl;
     }
 
-    p.loadFactoryPreset (19);
+    p.loadFactoryPreset (26);
     render (p, head, 2.0);
     std::unique_ptr<juce::AudioProcessorEditor> editor (p.createEditor());
     editor->setSize (Dedal2Editor::kDesignWidth, Dedal2Editor::kDesignHeight);

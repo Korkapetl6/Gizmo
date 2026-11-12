@@ -64,3 +64,11 @@ Pod FREQUENCY obu oscylatorów są przyciski **-12, -1, +1, +12**. Przesuwają w
 
 - **Akordy**: VCO gra SEQ1, MOD VCO gra SEQ2, oba są w mikserze i odpalają się razem, więc na każdym kroku brzmi interwał. Presety *Akordy: dwa głosy z CHAIN* (jedna sekwencja, dwie głowice 2 kroki od siebie), *Akordy: kwinty* (MOD VCO o kwintę wyżej) i *Akordy: 32 kroki* (16 STEPS + CHAIN, głowice 8 kroków od siebie). Z MIDI na „SEQ1+2” akordy idą też do innego instrumentu.
 - **Flipy**: kabel SEQ TRIG jednego sekwencera do BIT FLIP drugiego. *Flip: SEQ1 zmienia SEQ2*, *Flip: wzajemnie* (oba kable naraz) i *Flip: 5 na 16* (krótki SEQ1 przepisuje długi SEQ2 w coraz innych miejscach). Gdy oba sekwencery mają tę samą długość, flip wraca do punktu wyjścia co drugą pętlę, więc różne długości dają więcej zmian.
+
+## Kolory
+
+Kolor pokazuje, skąd płynie sygnał. SEQ1 jest pomarańczowy, SEQ2 morski, EG1 żółty, EG2 koralowy (legenda w nagłówku). Gałki AMT mają kolor źródła, którego słuchają, a wyjścia w patch bayu i kable kolor sygnału, który niosą (M VCO niebieski, MIXER fioletowy, U MIX różowy, CLOCK zielony, NOISE szary, VCA biały). Moduły dźwiękowe są neutralne.
+
+## Presety „West”
+
+Siedem presetów w duchu syntezatorów zachodniego wybrzeża: sinus z FM, barwa z wavefoldera, a EG2 otwiera naraz filtr i VCA jak bramka dolnoprzepustowa (kabel EG2 → CUTOFF). *Bongo (LPG)*, *FM dzwon*, *fałdowany bas*, *niepewność* (losowe napięcia sterują foldem, wolny MOD VCO filtrem), *pulser* (MOD VCO jest zegarem, a SEQ2 zmienia jego tempo), *krople* i *oddech*.

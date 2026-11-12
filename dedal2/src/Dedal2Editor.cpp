@@ -8,9 +8,27 @@ namespace theme = gizmo::theme;
 
 namespace
 {
+// Colours follow the signals: each modulation source has its own colour, and every AMT knob, output
+// jack and cable takes the colour of what it carries. Sound modules stay neutral.
 const juce::Colour colourSeq[2] = { theme::accentFilter, theme::accentB };
-const juce::Colour cableColours[] = { juce::Colour (0xffff6b6b), juce::Colour (0xffffc04d), juce::Colour (0xff6bd68f), juce::Colour (0xff5ab4ff),
-                                      juce::Colour (0xffc58bff), juce::Colour (0xffff8fd0) };
+const juce::Colour colourEg1 { 0xffe6c84a }, colourEg2 { 0xffff7a6b }, neutral { 0xff9aa0b4 };
+
+juce::Colour outputColour (int out)
+{
+    switch (out)
+    {
+        case outSeq1Cv: case outSeq1Trig: return colourSeq[0];
+        case outSeq2Cv: case outSeq2Trig: return colourSeq[1];
+        case outEg1:  return colourEg1;
+        case outEg2:  return colourEg2;
+        case outMvco: return juce::Colour (0xff5ab4ff);
+        case outMixer: return juce::Colour (0xffc58bff);
+        case outUmix: return juce::Colour (0xffff8fd0);
+        case outClock: return juce::Colour (0xff6bd68f);
+        case outNoise: return juce::Colour (0xffb8b8c4);
+        default:      return juce::Colour (0xffe8e8f0);
+    }
+}
 
 class Btn : public juce::Button
 {
@@ -196,9 +214,9 @@ public:
             const auto level = j.input || j.index < 0 ? 0.0f : juce::jlimit (0.0f, 1.0f, std::abs (processor.jackLevel (j.index)));
             g.setColour (theme::knobBody.brighter (0.25f));
             g.fillEllipse (c.x - 13.0f, c.y - 13.0f, 26.0f, 26.0f);
-            g.setColour ((j.input ? theme::panelEdge.brighter (0.6f) : theme::accentLfo).withAlpha (j.index < 0 ? 0.25f : 1.0f));
+            g.setColour ((j.input ? theme::panelEdge.brighter (0.6f) : outputColour (j.index)).withAlpha (j.index < 0 ? 0.25f : 1.0f));
             g.drawEllipse (c.x - 13.0f, c.y - 13.0f, 26.0f, 26.0f, 2.0f);
-            g.setColour (theme::background.interpolatedWith (theme::accentLfo, level));
+            g.setColour (theme::background.interpolatedWith (j.input ? theme::accentLfo : outputColour (j.index), level));
             g.fillEllipse (c.x - 6.5f, c.y - 6.5f, 13.0f, 13.0f);
         }
 
@@ -218,7 +236,7 @@ public:
 
         for (int in = 0; in < numIns; ++in)
             if (const auto out = processor.cableAt (in); out >= 0)
-                cable (centre (find (false, out)), centre (find (true, in)), cableColours[(out + in) % 6]);
+                cable (centre (find (false, out)), centre (find (true, in)), outputColour (out));
 
         if (dragFrom >= 0)
             cable (centre (dragFrom), dragPoint, theme::text);
@@ -313,33 +331,33 @@ public:
             knob (ID::range[k], "CV RANGE " + n, colourSeq[k]);
         }
 
-        knob (ID::vcoFreq, "FREQUENCY", theme::accentA);
-        knob (ID::vcoEg1, "EG1 AMT", theme::accentA);
-        knob (ID::vcoSeq1, "SEQ1 AMT", theme::accentA);
-        knob (ID::modFreq, "FREQUENCY", theme::accentLfo);
-        knob (ID::modEg1, "EG1 AMT", theme::accentLfo);
-        knob (ID::modSeq2, "SEQ2 AMT", theme::accentLfo);
-        knob (ID::fm, "FM AMT", theme::accentLfo);
-        knob (ID::lvlVco, "VCO LVL", theme::accentVoice);
-        knob (ID::lvlRing, "RING MOD LVL", theme::accentVoice);
-        knob (ID::umixLvl, "U MIX 1 LVL", theme::accentVoice);
-        knob (ID::lvlMod, "MOD VCO LVL", theme::accentVoice);
-        knob (ID::lvlNoise, "NOISE LVL", theme::accentVoice);
-        knob (ID::noiseTone, "NOISE TONE", theme::accentVoice);
-        knob (ID::fold, "FOLD", theme::accentFragment);
-        knob (ID::bias, "BIAS", theme::accentFragment);
-        knob (ID::foldEg, "EG1/CV AMT", theme::accentFragment);
-        knob (ID::foldSeq, "SEQ1 AMT", theme::accentFragment);
-        knob (ID::cutoff, "CUTOFF", theme::accentFilter);
-        knob (ID::resonance, "RESONANCE", theme::accentFilter);
-        knob (ID::cutEg, "EG1/CV AMT", theme::accentFilter);
-        knob (ID::cutSeq, "SEQ2 AMT", theme::accentFilter);
-        knob (ID::mode, "FILTER MODE", theme::accentFilter);
-        knob (ID::eg1Decay, "EG1 DECAY", theme::accentB);
-        knob (ID::eg2Decay, "EG2 DECAY", theme::accentB);
-        knob (ID::trigMix, "EG TRIG MIX", theme::accentB);
-        knob (ID::blend, "BLEND", theme::accentA);
-        knob (ID::volume, "VOLUME", theme::accentA);
+        knob (ID::vcoFreq, "FREQUENCY", neutral);
+        knob (ID::vcoEg1, "EG1 AMT", colourEg1);
+        knob (ID::vcoSeq1, "SEQ1 AMT", colourSeq[0]);
+        knob (ID::modFreq, "FREQUENCY", neutral);
+        knob (ID::modEg1, "EG1 AMT", colourEg1);
+        knob (ID::modSeq2, "SEQ2 AMT", colourSeq[1]);
+        knob (ID::fm, "FM AMT", outputColour (outMvco));
+        knob (ID::lvlVco, "VCO LVL", neutral);
+        knob (ID::lvlRing, "RING MOD LVL", neutral);
+        knob (ID::umixLvl, "U MIX 1 LVL", outputColour (outUmix));
+        knob (ID::lvlMod, "MOD VCO LVL", neutral);
+        knob (ID::lvlNoise, "NOISE LVL", neutral);
+        knob (ID::noiseTone, "NOISE TONE", neutral);
+        knob (ID::fold, "FOLD", neutral);
+        knob (ID::bias, "BIAS", neutral);
+        knob (ID::foldEg, "EG1/CV AMT", colourEg1);
+        knob (ID::foldSeq, "SEQ1 AMT", colourSeq[0]);
+        knob (ID::cutoff, "CUTOFF", neutral);
+        knob (ID::resonance, "RESONANCE", neutral);
+        knob (ID::cutEg, "EG1/CV AMT", colourEg1);
+        knob (ID::cutSeq, "SEQ2 AMT", colourSeq[1]);
+        knob (ID::mode, "FILTER MODE", neutral);
+        knob (ID::eg1Decay, "EG1 DECAY", colourEg1);
+        knob (ID::eg2Decay, "EG2 DECAY", colourEg2);
+        knob (ID::trigMix, "EG TRIG MIX", neutral);
+        knob (ID::blend, "BLEND", neutral);
+        knob (ID::volume, "VOLUME", neutral);
         knob (ID::gate, pl ("Długość nut"), theme::accentLfo);
         combo (ID::order);
         segmented (ID::midiSeq, theme::accentLfo);
@@ -522,7 +540,21 @@ public:
         g.drawText ("dedal 2", juce::Rectangle<int> (16, 8, 130, 42), juce::Justification::centredLeft, false);
         g.setColour (theme::text);
         g.setFont (theme::font (13.0f, true));
-        g.drawText (tempoText, juce::Rectangle<int> (744, 14, 520, 30), juce::Justification::centredRight, false);
+        g.drawText (tempoText, juce::Rectangle<int> (1000, 14, 264, 30), juce::Justification::centredRight, false);
+
+        // Legend: which colour is which modulation source
+        auto x = 760.0f;
+        const std::pair<const char*, juce::Colour> legend[] = { { "SEQ1", colourSeq[0] }, { "SEQ2", colourSeq[1] }, { "EG1", colourEg1 }, { "EG2", colourEg2 } };
+
+        for (const auto& [label, colour] : legend)
+        {
+            g.setColour (colour);
+            g.fillEllipse (x, 24.0f, 10.0f, 10.0f);
+            g.setColour (theme::textDim);
+            g.setFont (theme::font (11.5f, true));
+            g.drawText (label, juce::Rectangle<float> (x + 14.0f, 19.0f, 40.0f, 20.0f), juce::Justification::centredLeft, false);
+            x += 58.0f;
+        }
 
         auto section = [&g] (juce::Rectangle<int> r, const juce::String& title, juce::Colour accent)
         {
@@ -536,8 +568,7 @@ public:
         };
 
         const char* names[] = { "VCO", "MOD VCO", "MIXER", "VCW", "VCF", "EG", "OUTPUT" };
-        const juce::Colour colours[] = { theme::accentA, theme::accentLfo, theme::accentVoice, theme::accentFragment, theme::accentFilter,
-                                         theme::accentB, theme::accentA };
+        const juce::Colour colours[] = { neutral, neutral, neutral, neutral, neutral, neutral, neutral };
 
         for (int i = 0; i < 7; ++i)
             section ({ 16 + i * 136, 64, 128, 376 }, names[i], colours[i]);

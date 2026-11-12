@@ -782,7 +782,9 @@ juce::StringArray Dedal2Processor::getFactoryPresetNames() const
         names.add (p.name);
 
     names.addArray ({ pl ("Akordy: dwa głosy z CHAIN"), "Akordy: kwinty", "Akordy: 32 kroki", "Flip: SEQ1 zmienia SEQ2",
-                      pl ("Flip: wzajemnie"), "Flip: 5 na 16" });
+                      pl ("Flip: wzajemnie"), "Flip: 5 na 16",
+                      "West: bongo (LPG)", pl ("West: FM dzwon"), pl ("West: fałdowany bas"), pl ("West: niepewność"),
+                      "West: pulser", "West: krople", "West: oddech" });
 
     return names;
 }
@@ -836,6 +838,55 @@ void Dedal2Processor::loadFactoryPreset (int presetIndex)
                      { ID::length[0], 7 }, { ID::length[1], 5 }, { ID::range[0], 0.2f }, { ID::range[1], 0.2f }, { ID::fold, 0.25f },
                      { ID::foldSeq, 0.3f }, { ID::eg2Decay, 0.25f } };
         cables = { { outSeq1Trig, inBitFlip2 }, { outSeq2Trig, inBitFlip1 } };
+    }
+    // West-coast patches in the spirit of the classic suitcase synths: a sine core with FM, folding for
+    // timbre, and EG2 opening the filter and the VCA together like a low-pass gate.
+    else if (presetIndex == firstOwn + 6) // bongo: a struck, resonant low-pass gate
+    {
+        settings = { { ID::order, 1 }, { ID::blend, 1.0f }, { ID::cutoff, 0.22f }, { ID::cutEg, 0.75f }, { ID::resonance, 0.55f },
+                     { ID::fold, 0.2f }, { ID::foldEg, 0.3f }, { ID::eg1Decay, 0.14f }, { ID::eg2Decay, 0.16f }, { ID::scale, 3 },
+                     { ID::range[0], 0.18f }, { ID::tempo, 7 }, { ID::corrupt[0], 0.15f }, { ID::trigMix, 0.0f } };
+        cables = { { outEg2, inCutoff } };
+    }
+    else if (presetIndex == firstOwn + 7) // bell: audio-rate FM at a non-integer ratio, EG1 folds the strike
+    {
+        settings = { { ID::vcoFreq, 60.0f }, { ID::modFreq, 79.0f }, { ID::modSeq2, 0.0f }, { ID::fm, 0.45f }, { ID::fold, 0.1f },
+                     { ID::foldEg, 0.6f }, { ID::eg1Decay, 0.6f }, { ID::eg2Decay, 1.4f }, { ID::blend, 0.3f }, { ID::cutoff, 0.7f },
+                     { ID::scale, 14 }, { ID::range[0], 0.2f }, { ID::tempo, 4 }, { ID::trigMix, 0.0f } };
+        cables = { { outEg2, inCutoff } };
+    }
+    else if (presetIndex == firstOwn + 8) // folded bass: low sine, all timbre from the folder
+    {
+        settings = { { ID::vcoFreq, 33.0f }, { ID::blend, 0.0f }, { ID::fold, 0.35f }, { ID::foldEg, 0.7f }, { ID::bias, 0.25f },
+                     { ID::foldSeq, 0.4f }, { ID::eg1Decay, 0.25f }, { ID::eg2Decay, 0.35f }, { ID::scale, 12 }, { ID::range[0], 0.12f },
+                     { ID::tempo, 7 }, { ID::trigMix, 0.0f } };
+    }
+    else if (presetIndex == firstOwn + 9) // uncertainty: random voltages steer the fold, a slow MOD VCO the filter
+    {
+        settings = { { ID::scale, 0 }, { ID::corrupt[0], 0.6f }, { ID::corrupt[1], 0.7f }, { ID::range[0], 0.25f }, { ID::range[1], 0.6f },
+                     { ID::modFreq, -30.0f }, { ID::modSeq2, 0.0f }, { ID::fold, 0.2f }, { ID::foldEg, 0.6f }, { ID::cutEg, 0.4f },
+                     { ID::blend, 0.5f }, { ID::eg1Decay, 0.4f }, { ID::eg2Decay, 0.6f }, { ID::tempo, 4 }, { ID::trigMix, 0.5f } };
+        cables = { { outSeq2Cv, inFold }, { outMvco, inCutoff } };
+    }
+    else if (presetIndex == firstOwn + 10) // pulser: the MOD VCO is the clock, SEQ2 bends its speed
+    {
+        settings = { { ID::modFreq, -12.0f }, { ID::modSeq2, 0.0f }, { ID::range[1], 0.3f }, { ID::scale, 3 }, { ID::range[0], 0.2f },
+                     { ID::cutoff, 0.25f }, { ID::cutEg, 0.7f }, { ID::resonance, 0.45f }, { ID::blend, 0.8f }, { ID::order, 1 },
+                     { ID::eg1Decay, 0.15f }, { ID::eg2Decay, 0.2f }, { ID::trigMix, 0.0f } };
+        cables = { { outMvco, inClock1 }, { outSeq2Cv, inMvcoVoct }, { outEg2, inCutoff } };
+    }
+    else if (presetIndex == firstOwn + 11) // drops: high, falling pitch, short bright band-pass
+    {
+        settings = { { ID::vcoFreq, 84.0f }, { ID::vcoEg1, 0.35f }, { ID::eg1Decay, 0.07f }, { ID::eg2Decay, 0.12f }, { ID::mode, 1.0f },
+                     { ID::resonance, 0.7f }, { ID::cutoff, 0.6f }, { ID::cutEg, 0.5f }, { ID::blend, 0.75f }, { ID::scale, 0 },
+                     { ID::range[0], 0.3f }, { ID::corrupt[0], 0.5f }, { ID::tempo, 8 }, { ID::trigMix, 0.0f } };
+    }
+    else if (presetIndex == firstOwn + 12) // breath: a slow MOD VCO opens the folder's VCA, long sequence steps
+    {
+        settings = { { ID::modFreq, -40.0f }, { ID::modSeq2, 0.0f }, { ID::blend, 0.35f }, { ID::fold, 0.3f }, { ID::foldSeq, 0.5f },
+                     { ID::foldEg, 0.3f }, { ID::eg1Decay, 2.5f }, { ID::eg2Decay, 4.0f }, { ID::tempo, 1 }, { ID::scale, 13 },
+                     { ID::range[0], 0.25f } };
+        cables = { { outMvco, inVcwVca } };
     }
     else if (presetIndex == firstOwn + 5) // a short SEQ1 keeps rewriting a long SEQ2 in ever new places
     {
