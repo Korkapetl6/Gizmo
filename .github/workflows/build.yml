@@ -46,6 +46,7 @@ jobs:
           Compress-Archive -Path "build/Gizmo_artefacts/Release/VST3/Gizmo.vst3" -DestinationPath "dist/Gizmo-Windows-VST3.zip"
           Compress-Archive -Path "build/solista/Solista_artefacts/Release/VST3/Solista.vst3" -DestinationPath "dist/Solista-Windows-VST3.zip"
           Compress-Archive -Path "build/dedal/Dedal_artefacts/Release/VST3/Dedal.vst3" -DestinationPath "dist/Dedal-Windows-VST3.zip"
+          Compress-Archive -Path "build/dedal2/Dedal2_artefacts/Release/VST3/Dedal 2.vst3" -DestinationPath "dist/Dedal2-Windows-VST3.zip"
 
       - name: Package (macOS)
         if: runner.os == 'macOS'
@@ -66,6 +67,11 @@ jobs:
           codesign --force --deep --sign - AU/Dedal.component
           ditto -c -k --keepParent VST3/Dedal.vst3 "$GITHUB_WORKSPACE/dist/Dedal-macOS-VST3.zip"
           ditto -c -k --keepParent AU/Dedal.component "$GITHUB_WORKSPACE/dist/Dedal-macOS-AU.zip"
+          cd "$GITHUB_WORKSPACE/build/dedal2/Dedal2_artefacts/Release"
+          codesign --force --deep --sign - "VST3/Dedal 2.vst3"
+          codesign --force --deep --sign - "AU/Dedal 2.component"
+          ditto -c -k --keepParent "VST3/Dedal 2.vst3" "$GITHUB_WORKSPACE/dist/Dedal2-macOS-VST3.zip"
+          ditto -c -k --keepParent "AU/Dedal 2.component" "$GITHUB_WORKSPACE/dist/Dedal2-macOS-AU.zip"
 
       - uses: actions/upload-artifact@v4
         with:

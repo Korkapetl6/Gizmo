@@ -98,3 +98,4 @@ endif()
 
 add_subdirectory(solista)
 add_subdirectory(dedal)
+add_subdirectory(dedal2)

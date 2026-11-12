@@ -6,6 +6,7 @@ Syntezator VST3 inspirowany Ensoniq Fizmo. Przeciągasz na niego dowolny sampel,
 
 > W tym repozytorium są też dwie inne wtyczki:
 > - **[Solista](solista/README.md)**: generator solówek gitarowych z bendami i vibrato, z którego przeciągasz MIDI na ścieżkę.
+> - **[Dedal 2](dedal2/README.md)**: ten sam głos ułożony moduł po module, z patch bayem i kablami.
 > - **[Dedal](dedal/README.md)**: generatywny syntezator z trzema mutującymi sekwencerami, wavefolderem, filtrem, bankami fal z Beads i wyjściem MIDI.
 
 ## Pobieranie i instalacja
