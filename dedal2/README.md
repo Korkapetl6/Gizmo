@@ -53,3 +53,7 @@ Testy offline przechodzą (normalizacje, zegar z kabla, RESET, audio przez kabel
 ## Presety według instrukcji
 
 Dwanaście ostatnich presetów fabrycznych (*A Simple Start* … *The Ooze*) powstało na podstawie opisów przykładowych patchy z instrukcji sprzętu: skala, kable, włączone bity i to, które gałki są w patchu ważne. Pozycje gałek są w instrukcji tylko na rysunkach, więc ustawiłem je sam według opisu brzmienia. To przybliżenia, nie kopie.
+
+## Strojenie bez ucha
+
+Pod FREQUENCY obu oscylatorów są przyciski **-12, -1, +1, +12**. Przesuwają wysokość dokładnie o półton albo oktawę i przy okazji zaokrąglają ją do pełnego półtonu, więc VCO i MOD VCO łatwo ustawić w czystym interwale (np. +7 = kwinta, +12 = oktawa).

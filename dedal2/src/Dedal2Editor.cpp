@@ -1,4 +1,5 @@
 #include "Dedal2Editor.h"
+#include <string>
 #include "Dedal2Params.h"
 #include "ui/Theme.h"
 
@@ -350,6 +351,33 @@ public:
         toggle (ID::midiSend, pl ("Wysyłaj MIDI"), theme::accentLfo);
         toggle (ID::sound, pl ("Własne brzmienie"), theme::accentVoice);
 
+        // Exact semitone and octave steps for both oscillators, so tuning needs no ear.
+        for (int o = 0; o < 2; ++o)
+        {
+            const int steps[] = { -12, -1, 1, 12 };
+            const char* labels[] = { "-12", "-1", "+1", "+12" };
+
+            for (int i = 0; i < 4; ++i)
+            {
+                auto& b = pitchSteps[o][i];
+                b = std::make_unique<Btn> (labels[i], o == 0 ? theme::accentA : theme::accentLfo);
+                const auto step = steps[i];
+                const auto* id = o == 0 ? ID::vcoFreq : ID::modFreq;
+                b->onClick = [this, id, step]
+                {
+                    if (auto* param = processor.apvts.getParameter (id))
+                    {
+                        const auto now = param->convertFrom0to1 (param->getValue());
+                        const auto target = std::round (now) + (float) step;
+                        param->beginChangeGesture();
+                        param->setValueNotifyingHost (param->convertTo0to1 (target));
+                        param->endChangeGesture();
+                    }
+                };
+                addAndMakeVisible (*b);
+            }
+        }
+
         for (auto* b : { &runButton, &resetButton, &advanceButton, &bufferSave, &bufferRecall, &triggerButton, &prevPreset, &nextPreset,
                          &savePreset, &clearCables, &saveMidi })
             addAndMakeVisible (b);
@@ -424,6 +452,16 @@ public:
                 }
 
                 y += h + 2;
+
+                if (std::string (*row.begin()) == ID::vcoFreq || std::string (*row.begin()) == ID::modFreq)
+                {
+                    const auto o = std::string (*row.begin()) == ID::vcoFreq ? 0 : 1;
+
+                    for (int i = 0; i < 4; ++i)
+                        pitchSteps[o][i]->setBounds (x + 6 + i * 29, y, 28, 20);
+
+                    y += 26;
+                }
             }
 
             return y;
@@ -710,6 +748,7 @@ private:
     Btn triggerButton { "TRIGGER", theme::accentB };
     Btn prevPreset { "<", theme::accentA }, nextPreset { ">", theme::accentA }, savePreset { "Zapisz", theme::accentA };
     Btn clearCables { "Wyjmij kable", theme::accentLfo };
+    std::unique_ptr<Btn> pitchSteps[2][4]; // VCO and MOD VCO: -12, -1, +1, +12 semitones
     juce::ComboBox presetBox;
     gizmo::Segmented dragBars { { "1", "2", "4", "8", "16" }, theme::accentLfo };
     Handle dragHandle;
