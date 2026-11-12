@@ -53,13 +53,14 @@ void GizmoLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int wi
     }
 
     const auto bodyRadius = radius - stroke * 1.5f;
-    g.setColour (theme::knobBody);
+    const auto light = (bool) slider.getProperties().getWithDefault ("light", false); // a white cap with a dark pointer
+    g.setColour (light ? theme::text : theme::knobBody);
     g.fillEllipse (centre.x - bodyRadius, centre.y - bodyRadius, bodyRadius * 2.0f, bodyRadius * 2.0f);
 
     const auto tip = centre.getPointOnCircumference (bodyRadius * 0.82f, valueAngle);
     const auto inner = centre.getPointOnCircumference (bodyRadius * 0.3f, valueAngle);
-    g.setColour (theme::text);
-    g.drawLine ({ inner, tip }, juce::jmax (1.6f, stroke * 0.55f));
+    g.setColour (light ? theme::background : theme::text);
+    g.drawLine ({ inner, tip }, juce::jmax (1.6f, stroke * (light ? 0.7f : 0.55f)));
 }
 
 juce::Label* GizmoLookAndFeel::createSliderTextBox (juce::Slider& slider)

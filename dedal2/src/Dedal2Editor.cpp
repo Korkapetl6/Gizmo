@@ -411,7 +411,12 @@ public:
                 if (small.contains (id))
                     place (id, x + 7, y + 18, width - 14, 86);
                 else
+                {
                     place (id, x - 3, y - 2, width + 6, 110);
+
+                    if (auto* k = dynamic_cast<gizmo::Knob*> (find (id)))
+                        k->slider.getProperties().set ("light", true);
+                }
 
                 x += width;
             }
