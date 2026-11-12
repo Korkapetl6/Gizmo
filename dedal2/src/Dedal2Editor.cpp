@@ -323,10 +323,10 @@ public:
         knob (ID::modSeq2, "SEQ2 AMT", theme::accentLfo);
         knob (ID::fm, "FM AMT", theme::accentLfo);
         knob (ID::lvlVco, "VCO LVL", theme::accentVoice);
-        knob (ID::lvlRing, "RING LVL", theme::accentVoice);
-        knob (ID::lvlMod, "MOD LVL", theme::accentVoice);
+        knob (ID::lvlRing, "U MIX 1 (RING)", theme::accentVoice);
+        knob (ID::lvlMod, "MOD VCO LVL", theme::accentVoice);
         knob (ID::lvlNoise, "NOISE LVL", theme::accentVoice);
-        knob (ID::noiseTone, "TONE", theme::accentVoice);
+        knob (ID::noiseTone, "NOISE TONE", theme::accentVoice);
         knob (ID::fold, "FOLD", theme::accentFragment);
         knob (ID::bias, "BIAS", theme::accentFragment);
         knob (ID::foldEg, "EG1/CV AMT", theme::accentFragment);
@@ -335,10 +335,10 @@ public:
         knob (ID::resonance, "RESONANCE", theme::accentFilter);
         knob (ID::cutEg, "EG1/CV AMT", theme::accentFilter);
         knob (ID::cutSeq, "SEQ2 AMT", theme::accentFilter);
-        knob (ID::mode, "MODE", theme::accentFilter);
+        knob (ID::mode, "FILTER MODE", theme::accentFilter);
         knob (ID::eg1Decay, "EG1 DECAY", theme::accentB);
         knob (ID::eg2Decay, "EG2 DECAY", theme::accentB);
-        knob (ID::trigMix, "TRIG MIX", theme::accentB);
+        knob (ID::trigMix, "EG TRIG MIX", theme::accentB);
         knob (ID::blend, "BLEND", theme::accentA);
         knob (ID::volume, "VOLUME", theme::accentA);
         knob (ID::gate, pl ("Długość nut"), theme::accentLfo);
@@ -605,7 +605,17 @@ private:
 
     void knob (const char* id, const juce::String& name, juce::Colour accent)
     {
-        keep (id, std::make_unique<gizmo::Knob> (processor.apvts, id, name, accent));
+        auto k = std::make_unique<gizmo::Knob> (processor.apvts, id, name, accent);
+
+        // Full names over small knobs: let the title squeeze instead of cutting it off.
+        for (auto* child : k->getChildren())
+            if (auto* title = dynamic_cast<juce::Label*> (child); title != nullptr && title->getText() == name)
+            {
+                title->setMinimumHorizontalScale (0.5f);
+                title->setBorderSize ({ 0, 3, 0, 3 });
+            }
+
+        keep (id, std::move (k));
     }
 
     void combo (const char* id)
