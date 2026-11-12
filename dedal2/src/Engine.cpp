@@ -187,8 +187,17 @@ void Engine::render (float* out, int numSamples, const Params& p, Sequencers& se
             phase2 += juce::jlimit (0.0, 0.45, (double) f2 / rate);
             phase2 -= std::floor (phase2);
 
-            if (src[inMvcoSync] >= 0 && (rising (inMvcoSync) || high[inMvcoSync]))
-                phase2 = 0.0;
+            // Hard sync on a rising edge near the top of the signal, so the M VCO patched into its own
+            // SYNC resets just before its peak: an almost full-height ramp a little above the set pitch.
+            if (src[inMvcoSync] >= 0)
+            {
+                const auto syncHigh = outs[(size_t) src[inMvcoSync]] > 0.9f;
+
+                if (syncHigh && ! high[inMvcoSync])
+                    phase2 = 0.0;
+
+                high[inMvcoSync] = syncHigh;
+            }
 
             const auto mod = (float) (phase2 < 0.5 ? 4.0 * phase2 - 1.0 : 3.0 - 4.0 * phase2);
 

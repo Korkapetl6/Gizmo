@@ -154,6 +154,32 @@ void tests()
         crossings += tone[i] <= 0.0f && tone[i + 1] > 0.0f ? 1 : 0;
     check (std::abs (crossings * 2 - 440) <= 4, "VCO in tune (" + juce::String (crossings * 2) + " Hz)");
 
+    // M VCO into its own SYNC: a saw a little higher than the set pitch, still following the pitch
+    {
+        auto pitchOf = [&] (float note)
+        {
+            p.loadFactoryPreset (0);
+            setParam (p, ID::modFreq, note);
+            setParam (p, ID::modSeq2, 0.0f);
+            setParam (p, ID::lvlVco, 0.0f);
+            setParam (p, ID::lvlMod, 0.5f);
+            setParam (p, ID::blend, 0.0f);
+            setParam (p, ID::foldEg, 0.0f);
+            setParam (p, ID::eg2Decay, 5.0f);
+            p.connect (outMvco, inMvcoSync);
+            const auto a = render (p, head, 1.0).audio;
+            int up = 0;
+            for (size_t i = 24000; i + 1 < 48000; ++i)
+                up += a[i] <= 0.0f && a[i + 1] > 0.0f ? 1 : 0;
+            p.clearCables();
+            return up * 2.0;
+        };
+
+        const auto low = pitchOf (45.0f), high = pitchOf (57.0f);
+        std::cout << "self-sync: " << low << " Hz and " << high << " Hz (set 110 and 220)" << std::endl;
+        check (low > 110.0 && low < 330.0 && std::abs (high / low - 2.0) < 0.1, "self-patched sync stays in tune and tracks the octave");
+    }
+
     // State keeps the cables
     p.loadFactoryPreset (3);
     juce::MemoryBlock state;
