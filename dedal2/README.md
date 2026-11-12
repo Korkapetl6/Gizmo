@@ -50,9 +50,11 @@ Nuty wysyła jako MIDI (ustawienie ścieżki jak w Dedalu), ostatnie takty możn
 
 Testy offline przechodzą (normalizacje, zegar z kabla, RESET, audio przez kabel, strojenie, zapis kabli). Wtyczka nie była uruchomiona w Abletonie i nie porównywałem jej ze sprzętem: zakresy gałek i charakter brzmienia są przybliżone według instrukcji.
 
-## Presety według instrukcji
+## Presety z instrukcji
 
-Dwanaście ostatnich presetów fabrycznych (*A Simple Start* … *The Ooze*) powstało na podstawie opisów przykładowych patchy z instrukcji sprzętu: skala, kable, włączone bity i to, które gałki są w patchu ważne. Pozycje gałek są w instrukcji tylko na rysunkach, więc ustawiłem je sam według opisu brzmienia. To przybliżenia, nie kopie.
+Dwanaście presetów fabrycznych (*A Simple Start* … *The Ooze*) odtwarza przykładowe patche z instrukcji sprzętu. Pozycje gałek zmierzyłem z rysunków (kąt wskaźnika każdej gałki), kable, przełącznik ORDER, CHAIN, długości i włączone bity przepisałem z rysunków, a skale z notatek. Tam, gdzie rysunek nie pokazuje bitów, sekwencja jest losowa, tak jak po włączeniu sprzętu.
+
+Różnice, o których warto wiedzieć: TEMPO to tu podział tempa Abletona, więc pozycję gałki tempa przełożyłem na 1/4, 1/8 albo 1/16. Zakresy częstotliwości VCO, MOD VCO i czasy zaniku nie są zmierzone na sprzęcie, więc ta sama pozycja gałki może dać trochę inną wysokość lub długość niż w oryginale. Głośność poszczególnych presetów też się różni.
 
 ## Strojenie bez ucha
 

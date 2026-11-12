@@ -215,9 +215,9 @@ void Engine::render (float* out, int numSamples, const Params& p, Sequencers& se
 
             // Utility mixer: channel 1 is the ring modulator unless something is patched in.
             const auto umix1 = src[inUmix1] >= 0 ? in (inUmix1) : vco * mod;
-            const auto umix = juce::jlimit (-1.5f, 1.5f, umix1 * p.lvlUmix1 * 2.0f + in (inUmix2));
+            const auto umix = juce::jlimit (-1.5f, 1.5f, umix1 * p.umixLvl * 2.0f + in (inUmix2));
             const auto mixer = 0.6f * (saturate (vco * p.lvlVco * 2.0f) + saturate (mod * p.lvlMod * 2.0f)
-                                       + juce::jlimit (-1.0f, 1.0f, umix1 * p.lvlUmix1 * 2.0f) + saturate (noise * p.lvlNoise * 2.0f));
+                                       + juce::jlimit (-1.0f, 1.0f, vco * mod * p.lvlUmix1 * 2.0f) + saturate (noise * p.lvlNoise * 2.0f));
 
             // FOLD and CUTOFF: EG1 is normalled, a patched CV replaces it and goes through the same AMT knob.
             foldSmooth += (p.fold + p.foldEg * (src[inFold] >= 0 ? in (inFold) : eg[0]) + p.foldSeq * seq1Volts - foldSmooth) * smooth;
@@ -283,8 +283,12 @@ void Engine::render (float* out, int numSamples, const Params& p, Sequencers& se
 
         decimator.process (work.data(), out + start, n);
 
+        // Soft ceiling instead of a hard clip: loud patches round off like an output stage.
         for (int i = 0; i < n; ++i)
-            out[start + i] = juce::jlimit (-1.0f, 1.0f, out[start + i]);
+        {
+            const auto x = out[start + i];
+            out[start + i] = std::abs (x) < 0.7f ? x : std::copysign (0.7f + 0.3f * std::tanh ((std::abs (x) - 0.7f) / 0.3f), x);
+        }
     }
 }
 } // namespace dedal2

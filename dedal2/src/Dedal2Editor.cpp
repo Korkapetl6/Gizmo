@@ -324,7 +324,8 @@ public:
         knob (ID::modSeq2, "SEQ2 AMT", theme::accentLfo);
         knob (ID::fm, "FM AMT", theme::accentLfo);
         knob (ID::lvlVco, "VCO LVL", theme::accentVoice);
-        knob (ID::lvlRing, "U MIX 1 (RING)", theme::accentVoice);
+        knob (ID::lvlRing, "RING MOD LVL", theme::accentVoice);
+        knob (ID::umixLvl, "U MIX 1 LVL", theme::accentVoice);
         knob (ID::lvlMod, "MOD VCO LVL", theme::accentVoice);
         knob (ID::lvlNoise, "NOISE LVL", theme::accentVoice);
         knob (ID::noiseTone, "NOISE TONE", theme::accentVoice);
@@ -469,7 +470,7 @@ public:
 
         strip (0, { { ID::vcoFreq }, { ID::vcoEg1, ID::vcoSeq1 } });
         strip (1, { { ID::modFreq }, { ID::modEg1, ID::modSeq2 }, { ID::fm } });
-        strip (2, { { ID::lvlVco, ID::lvlRing }, { ID::lvlMod, ID::lvlNoise }, { ID::noiseTone } });
+        strip (2, { { ID::lvlVco, ID::lvlRing }, { ID::lvlMod, ID::lvlNoise }, { ID::noiseTone, ID::umixLvl } });
         strip (3, { { ID::fold }, { ID::bias, ID::foldEg }, { ID::foldSeq } });
         strip (4, { { ID::cutoff }, { ID::resonance, ID::mode }, { ID::cutEg, ID::cutSeq } });
         const auto egEnd = strip (5, { { ID::eg1Decay }, { ID::eg2Decay }, { ID::trigMix } });

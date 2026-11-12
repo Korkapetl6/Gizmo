@@ -704,14 +704,64 @@ bool Dedal2Processor::loadPresetFile (const juce::File& file)
     return false;
 }
 
+namespace
+{
+/** The example patches of the hardware manual. Knob positions are measured from its drawings
+    (0 = fully counter-clockwise, 1 = fully clockwise); scale, cables and switches come from the
+    drawings and the notes. */
+struct ManualPatch
+{
+    const char* name;
+    std::vector<std::pair<const char*, float>> knobs;
+    std::vector<std::pair<int, int>> cables; // output, input
+    const char* bits1;
+    const char* bits2;
+    int scale, tempo, order;
+    bool chain;
+    int length2;
+    bool modOctaveAbove;
+};
+
+const std::vector<ManualPatch>& manualPatches()
+{
+    static const std::vector<ManualPatch> patches {
+        { "A Simple Start", { { ID::vcoFreq, 0.50f }, { ID::vcoEg1, 0.49f }, { ID::vcoSeq1, 1.00f }, { ID::fm, 0.00f }, { ID::lvlVco, 1.00f }, { ID::lvlNoise, 0.00f }, { ID::lvlRing, 0.00f }, { ID::noiseTone, 0.50f }, { ID::modFreq, 0.50f }, { ID::modEg1, 0.49f }, { ID::modSeq2, 0.00f }, { ID::lvlMod, 0.00f }, { ID::fold, 0.29f }, { ID::foldEg, 0.50f }, { ID::foldSeq, 1.00f }, { ID::cutoff, 0.99f }, { ID::cutEg, 0.50f }, { ID::cutSeq, 0.00f }, { ID::bias, 0.00f }, { ID::blend, 0.50f }, { ID::volume, 0.79f }, { ID::resonance, 0.00f }, { ID::mode, 0.00f }, { ID::umixLvl, 0.00f }, { ID::trigMix, 0.50f }, { ID::eg1Decay, 0.20f }, { ID::eg2Decay, 0.20f }, { ID::corrupt[0], 0.00f }, { ID::corrupt[1], 0.00f }, { ID::range[0], 1.00f }, { ID::range[1], 0.00f } },
+          {  }, "00111010", "01111010", 12, 7, 0, false, 8, false },
+        { "Lost in the Labyrinth", { { ID::vcoFreq, 0.51f }, { ID::vcoEg1, 0.49f }, { ID::vcoSeq1, 1.00f }, { ID::fm, 0.00f }, { ID::lvlVco, 0.80f }, { ID::lvlNoise, 0.35f }, { ID::lvlRing, 0.00f }, { ID::noiseTone, 0.15f }, { ID::modFreq, 0.30f }, { ID::modEg1, 0.49f }, { ID::modSeq2, 0.00f }, { ID::lvlMod, 0.36f }, { ID::fold, 0.13f }, { ID::foldEg, 0.45f }, { ID::foldSeq, 0.00f }, { ID::cutoff, 0.39f }, { ID::cutEg, 0.50f }, { ID::cutSeq, 1.00f }, { ID::bias, 0.69f }, { ID::blend, 0.99f }, { ID::volume, 0.79f }, { ID::resonance, 0.75f }, { ID::mode, 0.94f }, { ID::umixLvl, 0.00f }, { ID::trigMix, 0.63f }, { ID::eg1Decay, 0.37f }, { ID::eg2Decay, 0.50f }, { ID::corrupt[0], 0.35f }, { ID::corrupt[1], 0.35f }, { ID::range[0], 0.65f }, { ID::range[1], 0.64f } },
+          { { outSeq1Trig, inBitFlip2 } }, "10110101", "00000010", 11, 7, 1, false, 8, false },
+        { "Dry Brushes", { { ID::vcoFreq, 0.50f }, { ID::vcoEg1, 0.45f }, { ID::vcoSeq1, 1.00f }, { ID::fm, 0.00f }, { ID::lvlVco, 1.00f }, { ID::lvlNoise, 0.80f }, { ID::lvlRing, 0.00f }, { ID::noiseTone, 1.00f }, { ID::modFreq, 0.61f }, { ID::modEg1, 0.43f }, { ID::modSeq2, 0.52f }, { ID::lvlMod, 1.00f }, { ID::fold, 0.44f }, { ID::foldEg, 0.41f }, { ID::foldSeq, 0.00f }, { ID::cutoff, 0.00f }, { ID::cutEg, 1.00f }, { ID::cutSeq, 0.61f }, { ID::bias, 0.50f }, { ID::blend, 0.50f }, { ID::volume, 0.65f }, { ID::resonance, 0.00f }, { ID::mode, 0.00f }, { ID::umixLvl, 0.00f }, { ID::trigMix, 0.39f }, { ID::eg1Decay, 0.36f }, { ID::eg2Decay, 0.20f }, { ID::corrupt[0], 1.00f }, { ID::corrupt[1], 1.00f }, { ID::range[0], 0.41f }, { ID::range[1], 0.80f } },
+          { { outEg1, inBlend }, { outMvco, inVcwIn } }, "01011011", "01000101", 12, 7, 0, false, 8, false },
+        { "Celestial Conversations", { { ID::vcoFreq, 0.74f }, { ID::vcoEg1, 0.49f }, { ID::vcoSeq1, 1.00f }, { ID::fm, 0.00f }, { ID::lvlVco, 0.90f }, { ID::lvlNoise, 0.00f }, { ID::lvlRing, 0.66f }, { ID::noiseTone, 0.00f }, { ID::modFreq, 0.50f }, { ID::modEg1, 0.49f }, { ID::modSeq2, 0.43f }, { ID::lvlMod, 0.58f }, { ID::fold, 0.50f }, { ID::foldEg, 0.65f }, { ID::foldSeq, 0.65f }, { ID::cutoff, 0.19f }, { ID::cutEg, 1.00f }, { ID::cutSeq, 1.00f }, { ID::bias, 0.19f }, { ID::blend, 0.15f }, { ID::volume, 0.70f }, { ID::resonance, 0.59f }, { ID::mode, 0.50f }, { ID::umixLvl, 0.00f }, { ID::trigMix, 0.79f }, { ID::eg1Decay, 0.32f }, { ID::eg2Decay, 0.65f }, { ID::corrupt[0], 1.00f }, { ID::corrupt[1], 1.00f }, { ID::range[0], 1.00f }, { ID::range[1], 0.50f } },
+          { { outEg2, inBlend }, { outMvco, inUmix1 }, { outUmix, inVcwVca }, { outEg1, inBitFlip1 } }, "", "", 14, 4, 1, false, 8, false },
+        { "Spiral Enigma", { { ID::vcoFreq, 0.74f }, { ID::vcoEg1, 1.00f }, { ID::vcoSeq1, 0.35f }, { ID::fm, 1.00f }, { ID::lvlVco, 0.90f }, { ID::lvlNoise, 0.00f }, { ID::lvlRing, 0.00f }, { ID::noiseTone, 0.00f }, { ID::modFreq, 0.67f }, { ID::modEg1, 1.00f }, { ID::modSeq2, 0.00f }, { ID::lvlMod, 1.00f }, { ID::fold, 0.39f }, { ID::foldEg, 0.65f }, { ID::foldSeq, 0.35f }, { ID::cutoff, 0.28f }, { ID::cutEg, 1.00f }, { ID::cutSeq, 1.00f }, { ID::bias, 0.23f }, { ID::blend, 0.50f }, { ID::volume, 0.69f }, { ID::resonance, 0.99f }, { ID::mode, 0.50f }, { ID::umixLvl, 0.00f }, { ID::trigMix, 0.59f }, { ID::eg1Decay, 0.65f }, { ID::eg2Decay, 1.00f }, { ID::corrupt[0], 1.00f }, { ID::corrupt[1], 0.50f }, { ID::range[0], 1.00f }, { ID::range[1], 0.50f } },
+          { { outEg1, inVcoVoct }, { outMvco, inMvcoVoct }, { outMixer, inVcwIn } }, "10110100", "01101000", 0, 2, 1, false, 8, false },
+        { "Swirling Magenta", { { ID::vcoFreq, 0.50f }, { ID::vcoEg1, 0.49f }, { ID::vcoSeq1, 1.00f }, { ID::fm, 0.00f }, { ID::lvlVco, 1.00f }, { ID::lvlNoise, 0.00f }, { ID::lvlRing, 0.00f }, { ID::noiseTone, 0.00f }, { ID::modFreq, 0.10f }, { ID::modEg1, 0.60f }, { ID::modSeq2, 0.81f }, { ID::lvlMod, 1.00f }, { ID::fold, 0.39f }, { ID::foldEg, 0.50f }, { ID::foldSeq, 0.35f }, { ID::cutoff, 0.09f }, { ID::cutEg, 0.66f }, { ID::cutSeq, 0.00f }, { ID::bias, 0.00f }, { ID::blend, 0.50f }, { ID::volume, 0.99f }, { ID::resonance, 0.39f }, { ID::mode, 0.59f }, { ID::umixLvl, 0.50f }, { ID::trigMix, 0.50f }, { ID::eg1Decay, 0.65f }, { ID::eg2Decay, 0.65f }, { ID::corrupt[0], 0.50f }, { ID::corrupt[1], 0.65f }, { ID::range[0], 0.35f }, { ID::range[1], 0.00f } },
+          { { outMvco, inUmix2 }, { outUmix, inVcwIn }, { outMixer, inUmix1 }, { outEg2, inTrigger }, { outSeq2Trig, inBitFlip1 } }, "11010000", "10011000", 8, 7, 2, false, 8, false },
+        { "New Frontiers", { { ID::vcoFreq, 0.61f }, { ID::vcoEg1, 0.49f }, { ID::vcoSeq1, 0.00f }, { ID::fm, 0.11f }, { ID::lvlVco, 1.00f }, { ID::lvlNoise, 0.00f }, { ID::lvlRing, 0.00f }, { ID::noiseTone, 1.00f }, { ID::modFreq, 0.10f }, { ID::modEg1, 0.49f }, { ID::modSeq2, 0.36f }, { ID::lvlMod, 1.00f }, { ID::fold, 0.29f }, { ID::foldEg, 0.20f }, { ID::foldSeq, 0.35f }, { ID::cutoff, 0.00f }, { ID::cutEg, 1.00f }, { ID::cutSeq, 0.65f }, { ID::bias, 0.58f }, { ID::blend, 0.50f }, { ID::volume, 0.69f }, { ID::resonance, 0.00f }, { ID::mode, 0.39f }, { ID::umixLvl, 0.00f }, { ID::trigMix, 0.53f }, { ID::eg1Decay, 0.35f }, { ID::eg2Decay, 0.35f }, { ID::corrupt[0], 0.35f }, { ID::corrupt[1], 1.00f }, { ID::range[0], 0.87f }, { ID::range[1], 0.80f } },
+          { { outMixer, inVcwIn }, { outMvco, inFold }, { outSeq2Trig, inBitFlip1 } }, "01100101", "10000100", 3, 7, 1, false, 8, false },
+        { "Syndrums", { { ID::vcoFreq, 0.50f }, { ID::vcoEg1, 0.00f }, { ID::vcoSeq1, 0.00f }, { ID::fm, 0.00f }, { ID::lvlVco, 1.00f }, { ID::lvlNoise, 0.00f }, { ID::lvlRing, 0.00f }, { ID::noiseTone, 1.00f }, { ID::modFreq, 0.74f }, { ID::modEg1, 0.65f }, { ID::modSeq2, 0.00f }, { ID::lvlMod, 1.00f }, { ID::fold, 0.09f }, { ID::foldEg, 0.65f }, { ID::foldSeq, 0.00f }, { ID::cutoff, 0.00f }, { ID::cutEg, 0.81f }, { ID::cutSeq, 1.00f }, { ID::bias, 0.00f }, { ID::blend, 0.59f }, { ID::volume, 0.99f }, { ID::resonance, 0.99f }, { ID::mode, 0.39f }, { ID::umixLvl, 0.00f }, { ID::trigMix, 0.59f }, { ID::eg1Decay, 0.65f }, { ID::eg2Decay, 0.35f }, { ID::corrupt[0], 0.35f }, { ID::corrupt[1], 1.00f }, { ID::range[0], 0.00f }, { ID::range[1], 0.35f } },
+          { { outMvco, inVcwIn }, { outClock, inFold } }, "11010000", "01100101", 2, 7, 2, false, 8, false },
+        { "Telemechanical Birds", { { ID::vcoFreq, 0.87f }, { ID::vcoEg1, 0.37f }, { ID::vcoSeq1, 0.20f }, { ID::fm, 0.00f }, { ID::lvlVco, 0.50f }, { ID::lvlNoise, 0.00f }, { ID::lvlRing, 0.20f }, { ID::noiseTone, 0.50f }, { ID::modFreq, 0.50f }, { ID::modEg1, 0.62f }, { ID::modSeq2, 1.00f }, { ID::lvlMod, 0.00f }, { ID::fold, 0.59f }, { ID::foldEg, 0.19f }, { ID::foldSeq, 0.00f }, { ID::cutoff, 0.79f }, { ID::cutEg, 0.34f }, { ID::cutSeq, 0.20f }, { ID::bias, 0.50f }, { ID::blend, 0.99f }, { ID::volume, 0.79f }, { ID::resonance, 0.59f }, { ID::mode, 0.99f }, { ID::umixLvl, 0.79f }, { ID::trigMix, 0.50f }, { ID::eg1Decay, 0.25f }, { ID::eg2Decay, 0.50f }, { ID::corrupt[0], 1.00f }, { ID::corrupt[1], 1.00f }, { ID::range[0], 0.50f }, { ID::range[1], 0.50f } },
+          { { outUmix, inVcoVoct }, { outMvco, inClock1 }, { outMixer, inVcwVca } }, "", "", 2, 4, 1, false, 8, false },
+        { "Where You Lead Kicks Follow", { { ID::vcoFreq, 0.75f }, { ID::vcoEg1, 0.61f }, { ID::vcoSeq1, 1.00f }, { ID::fm, 0.00f }, { ID::lvlVco, 0.50f }, { ID::lvlNoise, 0.00f }, { ID::lvlRing, 0.80f }, { ID::noiseTone, 0.50f }, { ID::modFreq, 0.62f }, { ID::modEg1, 0.63f }, { ID::modSeq2, 1.00f }, { ID::lvlMod, 0.00f }, { ID::fold, 0.79f }, { ID::foldEg, 0.62f }, { ID::foldSeq, 0.00f }, { ID::cutoff, 0.19f }, { ID::cutEg, 0.62f }, { ID::cutSeq, 0.00f }, { ID::bias, 0.79f }, { ID::blend, 0.59f }, { ID::volume, 0.79f }, { ID::resonance, 0.79f }, { ID::mode, 0.00f }, { ID::umixLvl, 0.98f }, { ID::trigMix, 0.98f }, { ID::eg1Decay, 0.28f }, { ID::eg2Decay, 0.27f }, { ID::corrupt[0], 1.00f }, { ID::corrupt[1], 0.00f }, { ID::range[0], 0.50f }, { ID::range[1], 0.50f } },
+          { { outMvco, inVcfIn }, { outEg1, inVcfVca }, { outSeq1Trig, inEg2Trig } }, "", "10000000", 2, 7, 0, false, 4, false },
+        { "Twinkle Toes", { { ID::vcoFreq, 0.55f }, { ID::vcoEg1, 0.49f }, { ID::vcoSeq1, 1.00f }, { ID::fm, 0.00f }, { ID::lvlVco, 0.50f }, { ID::lvlNoise, 0.00f }, { ID::lvlRing, 0.00f }, { ID::noiseTone, 0.50f }, { ID::modFreq, 0.93f }, { ID::modEg1, 0.49f }, { ID::modSeq2, 1.00f }, { ID::lvlMod, 0.00f }, { ID::fold, 0.13f }, { ID::foldEg, 0.50f }, { ID::foldSeq, 0.00f }, { ID::cutoff, 0.33f }, { ID::cutEg, 0.58f }, { ID::cutSeq, 1.00f }, { ID::bias, 0.51f }, { ID::blend, 0.73f }, { ID::volume, 0.79f }, { ID::resonance, 0.23f }, { ID::mode, 0.98f }, { ID::umixLvl, 0.00f }, { ID::trigMix, 0.00f }, { ID::eg1Decay, 0.66f }, { ID::eg2Decay, 0.65f }, { ID::corrupt[0], 0.00f }, { ID::corrupt[1], 1.00f }, { ID::range[0], 0.43f }, { ID::range[1], 0.43f } },
+          { { outMvco, inVcfIn }, { outEg1, inVcwVca }, { outEg2, inCutoff }, { outSeq1Trig, inClock2 }, { outSeq2Trig, inEg2Trig } }, "10101010", "", 2, 7, 0, false, 8, true },
+        { "The Ooze", { { ID::vcoFreq, 0.50f }, { ID::vcoEg1, 0.49f }, { ID::vcoSeq1, 1.00f }, { ID::fm, 0.00f }, { ID::lvlVco, 1.00f }, { ID::lvlNoise, 0.00f }, { ID::lvlRing, 0.00f }, { ID::noiseTone, 0.00f }, { ID::modFreq, 0.23f }, { ID::modEg1, 0.49f }, { ID::modSeq2, 0.00f }, { ID::lvlMod, 0.26f }, { ID::fold, 0.45f }, { ID::foldEg, 0.50f }, { ID::foldSeq, 1.00f }, { ID::cutoff, 0.13f }, { ID::cutEg, 0.65f }, { ID::cutSeq, 1.00f }, { ID::bias, 0.50f }, { ID::blend, 0.75f }, { ID::volume, 0.79f }, { ID::resonance, 0.79f }, { ID::mode, 0.55f }, { ID::umixLvl, 0.07f }, { ID::trigMix, 0.00f }, { ID::eg1Decay, 0.38f }, { ID::eg2Decay, 0.65f }, { ID::corrupt[0], 1.00f }, { ID::corrupt[1], 0.00f }, { ID::range[0], 1.00f }, { ID::range[1], 1.00f } },
+          { { outUmix, inVcoVoct }, { outNoise, inMvcoVoct }, { outSeq2Cv, inBlend }, { outMvco, inUmix1 }, { outSeq1Trig, inBitFlip2 } }, "", "", 2, 7, 1, true, 8, false },
+    };
+    return patches;
+}
+} // namespace
+
 juce::StringArray Dedal2Processor::getFactoryPresetNames() const
 {
-    // The last twelve follow the notes of the example patches in the hardware manual (scale, cables, which
-    // controls matter); the knob positions there are drawings only, so these are set by ear of the description.
-    return { "Init", "Fold + filtr", "Polirytm 5 : 7", "Kable: SEQ2 > BLEND, EG2 > FOLD", "Kable: M VCO taktuje SEQ2",
-             "A Simple Start", "Lost in the Labyrinth", "Dry Brushes", "Celestial Conversations", "Spiral Enigma",
-             "Swirling Magenta", "Syndrums", "New Frontiers", "Telemechanical Birds", "Where You Lead Kicks Follow",
-             "Twinkle Toes", "The Ooze" };
+    juce::StringArray names { "Init", "Fold + filtr", "Polirytm 5 : 7", "Kable: SEQ2 > BLEND, EG2 > FOLD", "Kable: M VCO taktuje SEQ2" };
+
+    for (const auto& p : manualPatches())
+        names.add (p.name);
+
+    return names;
 }
 
 void Dedal2Processor::loadFactoryPreset (int presetIndex)
@@ -742,65 +792,6 @@ void Dedal2Processor::loadFactoryPreset (int presetIndex)
                          { ID::cutSeq, 0.5f }, { ID::eg2Decay, 0.3f } };
             cables = { { outMvco, inClock2 } };
             break;
-        case 5: // minor 7th, given bits, a touch of FM as vibrato
-            settings = { { ID::scale, 12 }, { ID::fm, 0.08f }, { ID::modFreq, -5.0f }, { ID::modSeq2, 0.0f }, { ID::tempo, 4 },
-                         { ID::cutEg, 0.35f }, { ID::range[0], 0.25f } };
-            bits[0] = "00111010";
-            bits[1] = "01111010";
-            break;
-        case 6: // major 13th, metallic from the MOD VCO
-            settings = { { ID::scale, 11 }, { ID::lvlMod, 0.35f }, { ID::modFreq, 67.0f }, { ID::fm, 0.2f }, { ID::trigMix, 0.5f },
-                         { ID::fold, 0.15f }, { ID::foldEg, 0.3f }, { ID::tempo, 7 } };
-            break;
-        case 7: // short and percussive, rows of different length, low MOD VCO
-            settings = { { ID::scale, 12 }, { ID::modFreq, 30.0f }, { ID::lvlMod, 0.3f }, { ID::fm, 0.3f }, { ID::length[0], 5 },
-                         { ID::length[1], 7 }, { ID::eg1Decay, 0.1f }, { ID::eg2Decay, 0.14f }, { ID::lvlNoise, 0.2f },
-                         { ID::noiseTone, 0.8f }, { ID::tempo, 7 }, { ID::trigMix, 0.5f } };
-            break;
-        case 8: // hang drum tuning, a second timbre from U MIX 1 (ring)
-            settings = { { ID::scale, 14 }, { ID::lvlRing, 0.3f }, { ID::modFreq, 55.0f }, { ID::eg1Decay, 1.2f }, { ID::eg2Decay, 1.5f },
-                         { ID::foldEg, 0.3f }, { ID::tempo, 4 }, { ID::trigMix, 0.5f }, { ID::range[0], 0.35f } };
-            break;
-        case 9: // hirajoshi, both CORRUPTs full, short decays, CLOCK into VCO 1V/OCT
-            settings = { { ID::scale, 8 }, { ID::corrupt[0], 1.0f }, { ID::corrupt[1], 1.0f }, { ID::eg1Decay, 0.06f },
-                         { ID::eg2Decay, 0.09f }, { ID::lvlRing, 0.4f }, { ID::bias, 0.3f }, { ID::fold, 0.2f }, { ID::tempo, 7 },
-                         { ID::trigMix, 0.5f }, { ID::modFreq, 20.0f } };
-            cables = { { outClock, inVcoVoct } };
-            break;
-        case 10: // unquantized, slow, FM
-            settings = { { ID::scale, 0 }, { ID::tempo, 1 }, { ID::length[0], 6 }, { ID::length[1], 5 }, { ID::fm, 0.4f },
-                         { ID::modFreq, 40.0f }, { ID::modSeq2, 0.5f }, { ID::eg1Decay, 2.0f }, { ID::eg2Decay, 3.0f },
-                         { ID::fold, 0.3f }, { ID::foldEg, 0.5f }, { ID::trigMix, 0.5f }, { ID::range[0], 0.4f } };
-            break;
-        case 11: // drums; EG2 into BIT FLIP 1 keeps rewriting the rhythm
-            settings = { { ID::vcoFreq, 36.0f }, { ID::vcoEg1, 0.5f }, { ID::vcoSeq1, 0.3f }, { ID::corrupt[0], 0.4f },
-                         { ID::eg1Decay, 0.12f }, { ID::eg2Decay, 0.2f }, { ID::lvlNoise, 0.35f }, { ID::noiseTone, 0.75f },
-                         { ID::cutoff, 0.72f }, { ID::mode, 0.5f }, { ID::tempo, 7 }, { ID::trigMix, 0.5f } };
-            cables = { { outEg2, inBitFlip1 } };
-            break;
-        case 12: // pentatonic; play a key to transpose
-            settings = { { ID::scale, 3 }, { ID::fm, 0.25f }, { ID::modFreq, 60.0f }, { ID::lvlMod, 0.2f }, { ID::tempo, 7 },
-                         { ID::trigMix, 0.5f }, { ID::cutSeq, 0.3f } };
-            break;
-        case 13: // chirps: EG1 sweeps the pitch, its decay sets how much bird
-            settings = { { ID::scale, 0 }, { ID::vcoFreq, 84.0f }, { ID::vcoEg1, 0.6f }, { ID::eg1Decay, 0.4f }, { ID::fm, 0.5f },
-                         { ID::modFreq, 10.0f }, { ID::modEg1, 0.5f }, { ID::corrupt[0], 0.3f }, { ID::corrupt[1], 0.3f },
-                         { ID::range[0], 0.5f }, { ID::eg2Decay, 0.25f }, { ID::tempo, 5 }, { ID::trigMix, 0.5f }, { ID::cutoff, 0.85f } };
-            break;
-        case 14: // a kick from the VCO (EG1) under a lead from the MOD VCO (EG2)
-            settings = { { ID::scale, 12 }, { ID::vcoFreq, 33.0f }, { ID::vcoEg1, 0.6f }, { ID::vcoSeq1, 0.0f }, { ID::lvlMod, 0.5f },
-                         { ID::modFreq, 60.0f }, { ID::eg1Decay, 0.15f }, { ID::eg2Decay, 0.35f }, { ID::tempo, 7 },
-                         { ID::trigMix, 0.5f }, { ID::range[1], 0.3f } };
-            break;
-        case 15: // two voices an octave apart, each with its own CV RANGE
-            settings = { { ID::scale, 3 }, { ID::vcoFreq, 60.0f }, { ID::modFreq, 72.0f }, { ID::lvlMod, 0.45f }, { ID::range[0], 0.3f },
-                         { ID::range[1], 0.5f }, { ID::length[1], 6 }, { ID::eg2Decay, 0.25f }, { ID::tempo, 7 }, { ID::trigMix, 0.5f } };
-            break;
-        case 16: // slow, resonant, unstable
-            settings = { { ID::scale, 5 }, { ID::lvlRing, 0.5f }, { ID::lvlNoise, 0.15f }, { ID::eg1Decay, 1.5f }, { ID::eg2Decay, 2.0f },
-                         { ID::cutoff, 0.4f }, { ID::resonance, 0.6f }, { ID::cutSeq, 0.6f }, { ID::fm, 0.3f }, { ID::modFreq, 36.0f },
-                         { ID::tempo, 2 }, { ID::corrupt[0], 0.2f }, { ID::corrupt[1], 0.2f }, { ID::trigMix, 0.5f } };
-            break;
         default:
             break;
     }
@@ -811,6 +802,27 @@ void Dedal2Processor::loadFactoryPreset (int presetIndex)
 
     for (const auto& s : settings)
         setParameter (s.id, s.value);
+
+    const ManualPatch* manual = presetIndex >= 5 && presetIndex - 5 < (int) manualPatches().size() ? &manualPatches()[(size_t) (presetIndex - 5)] : nullptr;
+
+    if (manual != nullptr)
+    {
+        for (const auto& [id, position] : manual->knobs)
+            if (auto* param = apvts.getParameter (id))
+                param->setValueNotifyingHost (position);
+
+        setParameter (ID::scale, (float) manual->scale);
+        setParameter (ID::tempo, (float) manual->tempo);
+        setParameter (ID::order, (float) manual->order);
+        setParameter (ID::chain, manual->chain ? 1.0f : 0.0f);
+        setParameter (ID::length[1], (float) manual->length2);
+
+        if (manual->modOctaveAbove)
+            setParameter (ID::modFreq, value (ID::vcoFreq) + 12.0f);
+
+        for (const auto& [out, in] : manual->cables)
+            cables.push_back ({ out, in });
+    }
 
     for (int i = 0; i < numIns; ++i)
         engine.setCable (i, -1);
@@ -825,6 +837,12 @@ void Dedal2Processor::loadFactoryPreset (int presetIndex)
         sequencers.randomise (0, 0.7f);
         sequencers.randomise (1, 0.7f);
         sequencers.state.bits[0] = sequencers.state.bits[kSteps] = true;
+
+        if (manual != nullptr)
+        {
+            bits[0] = manual->bits1;
+            bits[1] = manual->bits2;
+        }
 
         for (int k = 0; k < 2; ++k)
             for (int i = 0; i < bits[k].length(); ++i)

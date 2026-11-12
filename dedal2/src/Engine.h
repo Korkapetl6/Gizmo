@@ -41,7 +41,7 @@ struct Params
 {
     float vcoNote = 48.0f, vcoEg1 = 0.0f, vcoSeq1 = 1.0f;
     float modNote = 48.0f, modEg1 = 0.0f, modSeq2 = 1.0f, fm = 0.0f;
-    float lvlVco = 0.5f, lvlUmix1 = 0.0f, lvlMod = 0.0f, lvlNoise = 0.0f, noiseTone = 0.5f;
+    float lvlVco = 0.5f, lvlUmix1 = 0.0f, umixLvl = 0.0f, lvlMod = 0.0f, lvlNoise = 0.0f, noiseTone = 0.5f;
     float fold = 0.0f, bias = 0.0f, foldEg = 0.0f, foldSeq = 0.0f;
     float cutoff = 0.6f, cutEg = 0.0f, cutSeq = 0.0f, resonance = 0.2f, mode = 0.0f;
     float blend = 0.5f;
