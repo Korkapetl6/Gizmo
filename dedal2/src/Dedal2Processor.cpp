@@ -2,6 +2,8 @@
 #include "Dedal2Editor.h"
 #include "Dedal2Params.h"
 
+#include <juce_audio_formats/juce_audio_formats.h>
+
 using namespace dedal2;
 
 namespace
@@ -99,6 +101,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout Dedal2Processor::createLayou
     choice (ID::scale, "Quantize", getScaleNames(), 2);
     choice (ID::tempo, "TEMPO", getRateNames(), 4);
     toggle (ID::trigger, "TRIGGER", false);
+    add (ID::smpTune, "SAMPLE TUNE", { -24.0f, 24.0f, 0.01f }, 0.0f,
+         [] (float v, int) { return (v > 0.004f ? "+" : "") + juce::String (v, 2) + " st"; });
+    unit (ID::smpStart, "SAMPLE START", 0.0f);
+    toggle (ID::smpRetrig, "SAMPLE RETRIG", false);
+    choice (ID::smpFollow, "SAMPLE PITCH", { "FIX", "SEQ1", "SEQ2" }, 0);
     toggle (ID::midiSend, "MIDI out", true);
     choice (ID::midiSeq, "MIDI notes", { "SEQ1", "SEQ2", "SEQ1+2" }, 0);
     unit (ID::gate, "MIDI gate", 0.5f);
@@ -176,6 +183,10 @@ Params Dedal2Processor::readParams() const
         p.corrupt[k] = value (ID::corrupt[k]);
     }
 
+    p.smpTune = value (ID::smpTune);
+    p.smpStart = value (ID::smpStart);
+    p.smpRetrig = value (ID::smpRetrig) > 0.5f;
+    p.smpFollow = index (ID::smpFollow);
     p.layout = readLayout();
     return p;
 }
@@ -292,6 +303,61 @@ void Dedal2Processor::recallBuffer()
         const juce::SpinLock::ScopedLockType lock (seqLock);
         fromValueTree (buffer, sequencers.state);
     }
+    sendChangeMessage();
+}
+
+//==============================================================================
+juce::String Dedal2Processor::sampleWildcard() { return "*.wav;*.aif;*.aiff;*.flac;*.mp3;*.ogg"; }
+
+bool Dedal2Processor::loadSample (const juce::File& file)
+{
+    juce::AudioFormatManager formats;
+    formats.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
+
+    if (reader == nullptr || reader->lengthInSamples < 128 || reader->sampleRate <= 0.0)
+        return false;
+
+    // Mono, at most a minute, peak brought to full level so it works as audio and as modulation alike.
+    const auto length = (int) std::min<juce::int64> (reader->lengthInSamples, (juce::int64) (reader->sampleRate * 60.0));
+    juce::AudioBuffer<float> audio ((int) reader->numChannels, length);
+    reader->read (&audio, 0, length, 0, true, true);
+
+    auto fresh = std::make_unique<Sample>();
+    fresh->rate = reader->sampleRate;
+    fresh->data.assign ((size_t) length + 1, 0.0f);
+    auto peak = 0.0f;
+
+    for (int i = 0; i < length; ++i)
+    {
+        auto sum = 0.0f;
+
+        for (int c = 0; c < audio.getNumChannels(); ++c)
+            sum += audio.getSample (c, i);
+
+        fresh->data[(size_t) i] = sum / (float) audio.getNumChannels();
+        peak = std::max (peak, std::abs (fresh->data[(size_t) i]));
+    }
+
+    if (peak < 1.0e-5f)
+        return false;
+
+    for (auto& v : fresh->data)
+        v /= peak;
+
+    engine.setSample (fresh.get());
+    sampleBefore = std::move (sampleNow);
+    sampleNow = std::move (fresh);
+    sampleFile = file;
+    sendChangeMessage();
+    return true;
+}
+
+void Dedal2Processor::clearSample()
+{
+    engine.setSample (nullptr);
+    sampleBefore = std::move (sampleNow);
+    sampleFile = juce::File();
     sendChangeMessage();
 }
 
@@ -620,6 +686,10 @@ juce::ValueTree Dedal2Processor::createState()
 
     state.setProperty ("cables", cables.joinIntoString (","), nullptr);
     state.setProperty ("stride", 16, nullptr);
+
+    if (sampleFile != juce::File())
+        state.setProperty ("sample", sampleFile.getFullPathName(), nullptr);
+
     state.setProperty ("preset", presetName, nullptr);
     return state;
 }
@@ -664,6 +734,10 @@ void Dedal2Processor::applyState (const juce::ValueTree& tree)
         if (cable.contains (">") && out >= 0 && out < numOuts && in >= 0 && in < numIns)
             engine.setCable (in, out);
     }
+
+    // The sample is kept as a path; a state without one leaves the loaded sample alone.
+    if (const auto path = tree.getProperty ("sample").toString(); path.isNotEmpty() && juce::File (path) != sampleFile)
+        loadSample (juce::File (path));
 
     const auto saved = tree.getChildWithName (bufferType);
     buffer = saved.isValid() ? saved.createCopy() : juce::ValueTree();

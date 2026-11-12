@@ -72,3 +72,16 @@ Kolor pokazuje, skąd płynie sygnał. SEQ1 jest pomarańczowy, SEQ2 morski, EG1
 ## Presety „West”
 
 Siedem presetów w duchu syntezatorów zachodniego wybrzeża: sinus z FM, barwa z wavefoldera, a EG2 otwiera naraz filtr i VCA jak bramka dolnoprzepustowa (kabel EG2 → CUTOFF). *Bongo (LPG)*, *FM dzwon*, *fałdowany bas*, *niepewność* (losowe napięcia sterują foldem, wolny MOD VCO filtrem), *pulser* (MOD VCO jest zegarem, a SEQ2 zmienia jego tempo), *krople* i *oddech*.
+
+## SAMPLE
+
+Trzynaste wyjście w patch bayu (zielone, w miejscu, gdzie sprzęt ma gniazdo MIDI) to odtwarzacz sampla. Sam z siebie
+nie gra – trzeba go wpiąć kablem, np. w VCF IN, VCW IN, U MIX 2, M VCO SYNC, CUTOFF albo CLOCK 1.
+
+- **Wczytaj sampel…** albo przeciągnij plik (wav, aiff, flac, mp3, ogg) na okno wtyczki. Sampel jest miksowany do mono,
+  wyrównywany do pełnego poziomu i przycinany do minuty.
+- **TUNE** ±24 półtony, **START** – miejsce, od którego gra (w pętli: początek pętli).
+- **RETRIG** wyłączony: sampel gra w pętli. Włączony: startuje od START przy każdym wyzwoleniu EG1 i gra raz do końca.
+- **PITCH**: FIX, SEQ1 albo SEQ2 – wysokość sampla idzie za skwantyzowanym napięciem wybranego sekwencera.
+
+W projekcie i w presecie zapisuje się ścieżka do pliku, nie sam dźwięk – po przeniesieniu pliku trzeba go wczytać ponownie.

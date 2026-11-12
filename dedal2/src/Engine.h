@@ -9,7 +9,7 @@ namespace dedal2
 {
 using namespace dedal;
 
-// The patch bay: 19 inputs and 12 outputs, named as on the instrument this follows.
+// The patch bay: 19 inputs and 13 outputs. The last output is our own addition: a sample player.
 enum In
 {
     inVcoVoct = 0, inMvcoSync, inMvcoVoct, inBlend, inVcwIn, inFold, inVcwVca, inVcfIn, inCutoff, inVcfVca,
@@ -19,7 +19,7 @@ enum In
 enum Out
 {
     outVca = 0, outMvco, outNoise, outMixer, outEg1, outEg2, outUmix, outSeq1Cv, outSeq1Trig, outSeq2Cv, outSeq2Trig,
-    outClock, numOuts
+    outClock, outSample, numOuts
 };
 
 inline const char* inName (int i)
@@ -33,7 +33,7 @@ inline const char* inName (int i)
 inline const char* outName (int i)
 {
     static const char* names[] = { "VCA", "M VCO", "NOISE", "MIXER", "EG1", "EG2", "U MIX 1+2", "SEQ1 CV", "SEQ1 TRIG", "SEQ2 CV",
-                                   "SEQ2 TRIG", "CLOCK" };
+                                   "SEQ2 TRIG", "CLOCK", "SAMPLE" };
     return names[i];
 }
 
@@ -50,6 +50,18 @@ struct Params
     int scale = 2;
     float range[2] = { 0.2f, 0.2f }, corrupt[2] = { 0.0f, 0.0f };
     Layout layout;
+
+    // Sample player behind the SAMPLE jack
+    float smpTune = 0.0f, smpStart = 0.0f; // semitones, 0..1 of the length
+    bool smpRetrig = false;                // restart on every EG1 trigger instead of looping
+    int smpFollow = 0;                     // 0 fixed pitch, 1 follows SEQ1, 2 follows SEQ2
+};
+
+/** A mono sample; owned by the processor, read by the audio thread. */
+struct Sample
+{
+    std::vector<float> data;
+    double rate = 44100.0;
 };
 
 /** A note the sequencers played, for MIDI out. */
@@ -76,6 +88,10 @@ public:
 
     float jack (int output) const noexcept { return outs[(size_t) output]; }
 
+    /** The caller keeps the sample alive for as long as it is set here. */
+    void setSample (const Sample* s) noexcept { sample.store (s); }
+    float samplePosition() const noexcept { return smpShown.load(); }
+
 private:
     void stepSequencer (int k, const Params&, Sequencers&, int sample, Played* played, int& numPlayed, int maxPlayed);
     float seqSemis (int k, const Params&, bool quantized) const noexcept;
@@ -92,6 +108,12 @@ private:
     float noiseLp = 0.0f, ic1 = 0.0f, ic2 = 0.0f, dc = 0.0f, dcIn = 0.0f, level = 0.0f;
     float foldSmooth = 0.0f, cutSmooth = 0.0f;
     juce::uint32 noiseState = 22222;
+    std::atomic<const Sample*> sample { nullptr };
+    const Sample* smpCurrent = nullptr;
+    double smpPos = 0.0, smpInc = 1.0;
+    float smpKey = -1000.0f;
+    bool smpPlaying = false, smpEgWas = false;
+    std::atomic<float> smpShown { 0.0f };
     gizmo::HalfbandDecimator decimator;
     std::vector<float> work;
 

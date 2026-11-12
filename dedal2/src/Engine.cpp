@@ -92,6 +92,27 @@ void Engine::render (float* out, int numSamples, const Params& p, Sequencers& se
     const auto k = 2.0f - 1.96f * juce::jlimit (0.0f, 1.0f, p.resonance);
     int clockIndex = 0;
 
+    // Sample player: a newly loaded sample starts from its start point.
+    const auto* smp = sample.load();
+
+    if (smp != smpCurrent)
+    {
+        smpCurrent = smp;
+        smpPos = 0.0;
+        smpPlaying = smp != nullptr && ! p.smpRetrig;
+        smpKey = -1000.0f;
+    }
+
+    const auto smpLength = smp != nullptr ? (double) smp->data.size() : 0.0;
+    const auto smpFrom = std::min ((double) p.smpStart, 0.98) * smpLength;
+    auto smpFire = manualTrigger && p.smpRetrig;
+
+    if (smp != nullptr && ! p.smpRetrig && ! smpPlaying)
+    {
+        smpPlaying = true;
+        smpPos = smpFrom;
+    }
+
     if (manualTrigger)
     {
         egTarget[0] = egTarget[1] = 1.0f;
@@ -141,8 +162,13 @@ void Engine::render (float* out, int numSamples, const Params& p, Sequencers& se
             if (clock1) stepSequencer (0, p, seq, sample, played, numPlayed, maxPlayed);
             if (clock2) stepSequencer (1, p, seq, sample, played, numPlayed, maxPlayed);
 
+            // The sample restarts with EG1: a sequencer step that fired, or a pulse into TRIGGER.
+            if (egAttack[0] && ! smpEgWas && p.smpRetrig)
+                smpFire = true;
+
             if (rising (inTrigger))
             {
+                smpFire = smpFire || p.smpRetrig;
                 egTarget[0] = 1.0f;
                 egAttack[0] = true;
 
@@ -158,6 +184,8 @@ void Engine::render (float* out, int numSamples, const Params& p, Sequencers& se
                 egTarget[1] = 1.0f;
                 egAttack[1] = true;
             }
+
+            smpEgWas = egAttack[0];
 
             for (int e = 0; e < 2; ++e)
             {
@@ -181,6 +209,46 @@ void Engine::render (float* out, int numSamples, const Params& p, Sequencers& se
             const auto seq1Pitch = p.vcoSeq1 >= 0.995f ? seqSemis (0, p, true) : p.vcoSeq1 * seqSemis (0, p, false);
             const auto seq2Pitch = p.modSeq2 >= 0.995f ? seqSemis (1, p, true) : p.modSeq2 * seqSemis (1, p, false);
             const auto seq1Volts = seqSemis (0, p, true) / 60.0f, seq2Volts = seqSemis (1, p, true) / 60.0f;
+
+            // SAMPLE: linear interpolation, looping or one-shot, optionally tracking a sequencer.
+            auto sampled = 0.0f;
+
+            if (smp != nullptr && smpLength > 64.0)
+            {
+                if (smpFire)
+                {
+                    smpPos = smpFrom;
+                    smpPlaying = true;
+                    smpFire = false;
+                }
+
+                const auto key = p.smpTune + (p.smpFollow == 1 ? seqSemis (0, p, true) : (p.smpFollow == 2 ? seqSemis (1, p, true) : 0.0f));
+
+                if (key != smpKey)
+                {
+                    smpKey = key;
+                    smpInc = smp->rate / rate * std::exp2 ((double) key / 12.0);
+                }
+
+                if (smpPlaying)
+                {
+                    if (smpPos >= smpLength - 1.0)
+                    {
+                        if (p.smpRetrig)
+                            smpPlaying = false;
+                        else
+                            smpPos = smpFrom + std::fmod (smpPos - smpFrom, std::max (1.0, smpLength - 1.0 - smpFrom));
+                    }
+
+                    if (smpPlaying)
+                    {
+                        const auto at = (size_t) smpPos;
+                        const auto frac = (float) (smpPos - (double) at);
+                        sampled = smp->data[at] + frac * (smp->data[at + 1] - smp->data[at]);
+                        smpPos += smpInc;
+                    }
+                }
+            }
 
             // MOD VCO: triangle. Jack CVs are 1 V/oct with 5 V = 1.0.
             const auto f2 = hz (p.modNote + seq2Pitch + p.modEg1 * 24.0f * eg[0] + in (inMvcoVoct) * 60.0f);
@@ -273,6 +341,7 @@ void Engine::render (float* out, int numSamples, const Params& p, Sequencers& se
             outs[outSeq1Trig] = trigLeft[0] > 0 ? 1.0f : 0.0f;
             outs[outSeq2Trig] = trigLeft[1] > 0 ? 1.0f : 0.0f;
             outs[outClock] = clockLeft > 0 ? 1.0f : 0.0f;
+            outs[outSample] = sampled;
             trigLeft[0] = std::max (0, trigLeft[0] - 1);
             trigLeft[1] = std::max (0, trigLeft[1] - 1);
             clockLeft = std::max (0, clockLeft - 1);
@@ -282,6 +351,7 @@ void Engine::render (float* out, int numSamples, const Params& p, Sequencers& se
         }
 
         decimator.process (work.data(), out + start, n);
+        smpShown = smpPlaying && smpLength > 0.0 ? (float) (smpPos / smpLength) : -1.0f;
 
         // Soft ceiling instead of a hard clip: loud patches round off like an output stage.
         for (int i = 0; i < n; ++i)

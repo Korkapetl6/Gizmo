@@ -4,7 +4,7 @@
 #include "ui/Controls.h"
 #include "ui/GizmoLookAndFeel.h"
 
-class Dedal2Editor : public juce::AudioProcessorEditor, private juce::ChangeListener, private juce::Timer
+class Dedal2Editor : public juce::AudioProcessorEditor, public juce::FileDragAndDropTarget, private juce::ChangeListener, private juce::Timer
 {
 public:
     static constexpr int kDesignWidth = 1280;
@@ -16,6 +16,8 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     void updateDisplay();
+    bool isInterestedInFileDrag (const juce::StringArray&) override;
+    void filesDropped (const juce::StringArray&, int, int) override;
 
 private:
     class Content;

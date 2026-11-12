@@ -142,6 +142,56 @@ void tests()
     check (render (p, head, 2.0).rms() > 0.005f, "NOISE into VCF IN is heard");
     p.clearCables();
 
+    // SAMPLE jack: a 220 Hz sine from a file, patched into VCF IN with nothing else in the mixer
+    {
+        const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("dedal2_test_sine.wav");
+        file.deleteFile();
+        {
+            juce::AudioBuffer<float> sine (1, 44100);
+            for (int i = 0; i < 44100; ++i)
+                sine.setSample (0, i, 0.3f * (float) std::sin (2.0 * juce::MathConstants<double>::pi * 220.0 * i / 44100.0));
+            juce::WavAudioFormat wav;
+            std::unique_ptr<juce::AudioFormatWriter> writer (wav.createWriterFor (new juce::FileOutputStream (file), 44100.0, 1, 16, {}, 0));
+            writer->writeFromAudioSampleBuffer (sine, 0, 44100);
+        }
+
+        auto pitchOf = [&] (float tune)
+        {
+            setParam (p, ID::smpTune, tune);
+            const auto a = render (p, head, 1.0).audio;
+            int n = 0;
+            for (size_t i = 24000; i + 1 < 48000; ++i)
+                n += a[i] <= 0.0f && a[i + 1] > 0.0f ? 1 : 0;
+            return n * 2;
+        };
+
+        p.loadFactoryPreset (0);
+        setParam (p, ID::blend, 1.0f);
+        setParam (p, ID::lvlVco, 0.0f);
+        setParam (p, ID::cutoff, 1.0f);
+        setParam (p, ID::eg2Decay, 5.0f);
+        setParam (p, ID::tempo, 7);
+        p.connect (outSample, inVcfIn);
+        check (render (p, head, 1.0).rms() < 1.0e-3f, "SAMPLE jack silent without a sample");
+        check (p.loadSample (file) && p.getSampleName() == "dedal2_test_sine.wav", "sample loads");
+        const auto base = pitchOf (0.0f), up = pitchOf (12.0f);
+        check (std::abs (base - 220) <= 6 && std::abs (up - 440) <= 10, "sample plays in tune and TUNE +12 doubles it ("
+                   + juce::String (base) + " / " + juce::String (up) + " Hz)");
+        setParam (p, ID::smpTune, 0.0f);
+        setParam (p, ID::smpRetrig, 1.0f);
+        check (render (p, head, 2.0).rms() > 0.005f, "RETRIG restarts the sample with the sequence");
+
+        juce::MemoryBlock block;
+        p.getStateInformation (block);
+        Dedal2Processor other;
+        other.setStateInformation (block.getData(), (int) block.getSize());
+        check (other.getSampleName() == "dedal2_test_sine.wav" && other.cableAt (inVcfIn) == outSample, "state brings the sample back");
+        p.clearSample();
+        check (render (p, head, 1.0).rms() < 1.0e-3f, "cleared sample is silent");
+        p.clearCables();
+        file.deleteFile();
+    }
+
     // Tuning: VCO at A4 without sequence
     p.loadFactoryPreset (0);
     setParam (p, ID::vcoFreq, 69.0f);

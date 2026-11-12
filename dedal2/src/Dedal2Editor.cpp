@@ -26,6 +26,7 @@ juce::Colour outputColour (int out)
         case outUmix: return juce::Colour (0xffff8fd0);
         case outClock: return juce::Colour (0xff6bd68f);
         case outNoise: return juce::Colour (0xffb8b8c4);
+        case outSample: return juce::Colour (0xffa6e05a);
         default:      return juce::Colour (0xffe8e8f0);
     }
 }
@@ -145,15 +146,16 @@ class PatchBay : public juce::Component
 public:
     explicit PatchBay (Dedal2Processor& p) : processor (p)
     {
-        // Panel order: the twenty inputs first (MIDI is not a patch point here), then the twelve outputs.
+        // Panel order: the inputs first, then the outputs. The slot among the inputs that would be a MIDI
+        // jack on hardware carries our own SAMPLE output instead.
         for (int i = 0; i < 17; ++i)
             jacks.push_back ({ true, i });
 
-        jacks.push_back ({ true, -1 });
+        jacks.push_back ({ false, outSample });
         jacks.push_back ({ true, inTrigger });
         jacks.push_back ({ true, inReset });
 
-        for (int i = 0; i < numOuts; ++i)
+        for (int i = 0; i < outSample; ++i)
             jacks.push_back ({ false, i });
     }
 
@@ -359,6 +361,10 @@ public:
         knob (ID::blend, "BLEND", neutral);
         knob (ID::volume, "VOLUME", neutral);
         knob (ID::gate, pl ("Długość nut"), theme::accentLfo);
+        knob (ID::smpTune, "TUNE", outputColour (outSample));
+        knob (ID::smpStart, "START", outputColour (outSample));
+        toggle (ID::smpRetrig, "RETRIG", outputColour (outSample));
+        combo (ID::smpFollow);
         combo (ID::order);
         segmented (ID::midiSeq, theme::accentLfo);
         combo (ID::tempo);
@@ -396,7 +402,7 @@ public:
         }
 
         for (auto* b : { &runButton, &resetButton, &advanceButton, &bufferSave, &bufferRecall, &triggerButton, &prevPreset, &nextPreset,
-                         &savePreset, &clearCables, &saveMidi })
+                         &savePreset, &clearCables, &saveMidi, &sampleLoad, &sampleClear })
             addAndMakeVisible (b);
 
         runButton.onClick = [this] { processor.setRunning (! processor.isRunningInternally()); };
@@ -405,6 +411,19 @@ public:
         bufferSave.onClick = [this] { processor.saveBuffer(); };
         bufferRecall.onClick = [this] { processor.recallBuffer(); };
         clearCables.onClick = [this] { processor.clearCables(); };
+        sampleClear.onClick = [this] { processor.clearSample(); };
+        sampleLoad.onClick = [this]
+        {
+            auto chooser = std::make_shared<juce::FileChooser> (pl ("Wczytaj sampel"),
+                juce::File::getSpecialLocation (juce::File::userMusicDirectory), Dedal2Processor::sampleWildcard());
+            juce::Component::SafePointer<Content> safe (this);
+            chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                                  [safe, chooser] (const juce::FileChooser& fc)
+                                  {
+                                      if (safe != nullptr && fc.getResult() != juce::File())
+                                          safe->processor.loadSample (fc.getResult());
+                                  });
+        };
         triggerButton.onClick = [this]
         {
             if (auto* t = processor.apvts.getParameter (ID::trigger))
@@ -442,7 +461,7 @@ public:
         nextPreset.setBounds (488, 14, 30, 30);
         savePreset.setBounds (524, 14, 84, 30);
         runButton.setBounds (624, 14, 110, 30);
-        bay.setBounds (968, 64, 296, 672);
+        bay.setBounds (968, 64, 296, 576);
 
         // Seven modules side by side, each a strip of its own; rows of knobs run down the strip.
         static const juce::StringArray big { ID::vcoFreq, ID::modFreq, ID::fold, ID::cutoff, ID::eg1Decay, ID::eg2Decay, ID::blend, ID::volume };
@@ -530,6 +549,14 @@ public:
         dragHandle.setBounds (632, 670, 170, 44);
         saveMidi.setBounds (810, 678, 138, 28);
         clearCables.setBounds (1150, 68, 104, 20);
+
+        // SAMPLE: the player behind the SAMPLE jack
+        sampleLoad.setBounds (978, 672, 108, 24);
+        place (ID::smpRetrig, 978, 704, 80, 24);
+        sampleClear.setBounds (1062, 704, 24, 24);
+        place (ID::smpTune, 1088, 656, 54, 78);
+        place (ID::smpStart, 1140, 656, 54, 78);
+        place (ID::smpFollow, 1196, 692, 60, 24);
     }
 
     void paint (juce::Graphics& g) override
@@ -575,6 +602,20 @@ public:
 
         section ({ 16, 448, 944, 192 }, "SEQUENCER", colourSeq[0]);
         section ({ 16, 648, 944, 88 }, "MIDI", theme::accentLfo);
+        section ({ 968, 648, 296, 88 }, "SAMPLE", outputColour (outSample));
+        g.setColour (theme::textDim);
+        g.setFont (theme::font (10.5f, true));
+        g.drawText ("PITCH", juce::Rectangle<int> (1196, 676, 60, 14), juce::Justification::centred, false);
+
+        // Where the sample is playing
+        g.setColour (theme::knobBody.brighter (0.2f));
+        g.fillRect (978, 698, 108, 2);
+
+        if (samplePos >= 0.0f)
+        {
+            g.setColour (outputColour (outSample));
+            g.fillRect (978 + juce::roundToInt (juce::jlimit (0.0f, 1.0f, samplePos) * 104.0f), 697, 4, 4);
+        }
 
         for (int k = 0; k < 2; ++k)
         {
@@ -611,6 +652,11 @@ public:
         if (presetBox.getText() != processor.getPresetName())
             refreshPresets();
 
+        const auto name = processor.getSampleName();
+        sampleLoad.setButtonText (name.isEmpty() ? pl ("Wczytaj sampel…") : name);
+        sampleClear.setEnabled (name.isNotEmpty());
+        samplePos = name.isEmpty() ? -1.0f : processor.samplePosition();
+        repaint (968, 690, 130, 14);
         bay.repaint();
         repaint (0, 0, kDesignWidth, 56);
         repaint (16, 470, 70, 130);
@@ -779,6 +825,8 @@ private:
     Btn triggerButton { "TRIGGER", theme::accentB };
     Btn prevPreset { "<", theme::accentA }, nextPreset { ">", theme::accentA }, savePreset { "Zapisz", theme::accentA };
     Btn clearCables { "Wyjmij kable", theme::accentLfo };
+    Btn sampleLoad { "", juce::Colour (0xffa6e05a) }, sampleClear { "x", juce::Colour (0xffa6e05a) };
+    float samplePos = -1.0f;
     std::unique_ptr<Btn> pitchSteps[2][4]; // VCO and MOD VCO: -12, -1, +1, +12 semitones
     juce::ComboBox presetBox;
     gizmo::Segmented dragBars { { "1", "2", "4", "8", "16" }, theme::accentLfo };
@@ -847,6 +895,17 @@ Dedal2Editor::~Dedal2Editor()
     stopTimer();
     processor.removeChangeListener (this);
     setLookAndFeel (nullptr);
+}
+
+bool Dedal2Editor::isInterestedInFileDrag (const juce::StringArray& files)
+{
+    return files.size() == 1 && juce::File (files[0]).hasFileExtension ("wav;aif;aiff;flac;mp3;ogg");
+}
+
+void Dedal2Editor::filesDropped (const juce::StringArray& files, int, int)
+{
+    if (files.size() > 0)
+        processor.loadSample (juce::File (files[0]));
 }
 
 void Dedal2Editor::paint (juce::Graphics& g) { g.fillAll (theme::background); }

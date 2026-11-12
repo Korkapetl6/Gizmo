@@ -64,6 +64,13 @@ public:
     void clearCables();
     float jackLevel (int output) const noexcept { return jackMeters[(size_t) output].load(); }
 
+    // Sample behind the SAMPLE jack (loaded on the message thread)
+    bool loadSample (const juce::File&);
+    void clearSample();
+    juce::String getSampleName() const { return sampleFile == juce::File() ? juce::String() : sampleFile.getFileName(); }
+    float samplePosition() const noexcept { return engine.samplePosition(); }
+    static juce::String sampleWildcard();
+
     void saveBuffer();
     void recallBuffer();
     bool hasBuffer() const noexcept { return buffer.isValid(); }
@@ -103,6 +110,8 @@ private:
     dedal2::Sequencers sequencers;
     dedal2::Engine engine;
     juce::ValueTree buffer;
+    std::unique_ptr<dedal2::Sample> sampleNow, sampleBefore; // the previous one outlives the block that may still read it
+    juce::File sampleFile;
 
     std::atomic<bool> run { false }, hostPlaying { false };
     std::atomic<double> hostBpm { 120.0 }, currentBeat { 0.0 }, sessionStart { 0.0 }, barBeats { 4.0 };
