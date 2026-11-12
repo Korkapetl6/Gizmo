@@ -399,68 +399,72 @@ public:
         runButton.setBounds (624, 14, 110, 30);
         bay.setBounds (968, 64, 296, 672);
 
-        auto row = [this] (int x, int y, std::initializer_list<const char*> ids, int width)
-        {
-            // Main parameters get the full-size knob; modulation amounts and mixer levels a smaller one.
-            static const juce::StringArray small { ID::vcoEg1, ID::vcoSeq1, ID::modEg1, ID::modSeq2, ID::fm, ID::lvlVco, ID::lvlRing,
-                                                   ID::lvlMod, ID::lvlNoise, ID::noiseTone, ID::bias, ID::foldEg, ID::foldSeq,
-                                                   ID::cutEg, ID::cutSeq, ID::mode, ID::trigMix };
+        // Seven modules side by side, each a strip of its own; rows of knobs run down the strip.
+        static const juce::StringArray big { ID::vcoFreq, ID::modFreq, ID::fold, ID::cutoff, ID::eg1Decay, ID::eg2Decay, ID::blend, ID::volume };
 
-            for (const auto* id : ids)
+        auto strip = [this] (int index, std::initializer_list<std::initializer_list<const char*>> rows)
+        {
+            const auto x = 16 + index * 136;
+            auto y = 88;
+
+            for (const auto& row : rows)
             {
-                if (small.contains (id))
-                    place (id, x + 7, y + 18, width - 14, 86);
-                else
+                const auto isBig = big.contains (*row.begin());
+                const auto w = isBig ? 104 : 60, h = isBig ? 106 : 84;
+                auto cx = x + (128 - w * (int) row.size()) / 2;
+
+                for (const auto* id : row)
                 {
-                    place (id, x - 3, y - 2, width + 6, 110);
+                    place (id, cx, y, w, h);
 
                     if (auto* k = dynamic_cast<gizmo::Knob*> (find (id)))
-                        k->slider.getProperties().set ("light", true);
+                        k->slider.getProperties().set ("light", isBig);
+
+                    cx += w;
                 }
 
-                x += width;
+                y += h + 2;
             }
+
+            return y;
         };
 
-        // Top: VCO, MOD VCO, MIXER
-        row (28, 88, { ID::vcoFreq, ID::vcoEg1, ID::vcoSeq1 }, 76);
-        row (274, 88, { ID::modFreq, ID::modEg1, ID::modSeq2, ID::fm }, 76);
-        row (594, 88, { ID::lvlVco, ID::lvlRing, ID::lvlMod, ID::lvlNoise, ID::noiseTone }, 72);
-        // Middle: VCW, VCF, EG
-        row (28, 244, { ID::fold, ID::bias, ID::foldEg, ID::foldSeq }, 76);
-        row (350, 244, { ID::cutoff, ID::resonance, ID::cutEg, ID::cutSeq, ID::mode }, 72);
-        row (728, 244, { ID::eg1Decay, ID::eg2Decay, ID::trigMix }, 74);
-        triggerButton.setBounds (836, 225, 112, 20);
+        strip (0, { { ID::vcoFreq }, { ID::vcoEg1, ID::vcoSeq1 } });
+        strip (1, { { ID::modFreq }, { ID::modEg1, ID::modSeq2 }, { ID::fm } });
+        strip (2, { { ID::lvlVco, ID::lvlRing }, { ID::lvlMod, ID::lvlNoise }, { ID::noiseTone } });
+        strip (3, { { ID::fold }, { ID::bias, ID::foldEg }, { ID::foldSeq } });
+        strip (4, { { ID::cutoff }, { ID::resonance, ID::mode }, { ID::cutEg, ID::cutSeq } });
+        const auto egEnd = strip (5, { { ID::eg1Decay }, { ID::eg2Decay }, { ID::trigMix } });
+        triggerButton.setBounds (16 + 5 * 136 + 10, egEnd + 2, 108, 22);
+        const auto outEnd = strip (6, { { ID::blend }, { ID::volume } });
+        place (ID::order, 16 + 6 * 136 + 8, outEnd + 18, 112, 26);
+        place (ID::sound, 16 + 6 * 136 + 8, outEnd + 52, 112, 26);
 
-        // Bottom: output and sequencers
-        row (28, 404, { ID::blend, ID::volume }, 84);
-        place (ID::order, 28, 536, 172, 28);
-        place (ID::sound, 28, 584, 172, 28);
-
+        // Below them, the sequencer as one wide module
         for (int k = 0; k < 2; ++k)
         {
-            const auto y = 408 + k * 96;
-            bits[k]->setBounds (290, y, 286, 74);
+            const auto y = 474 + k * 64;
+            bits[k]->setBounds (84, y, 262, 52);
 
             for (int i = 0; i < 3; ++i)
-                seqButtons[k][i]->setBounds (586 + i * 76, y + 6, 72, 30);
+                seqButtons[k][i]->setBounds (358 + i * 110, y + 2, 106, 24);
 
             for (int i = 0; i < 4; ++i)
-                extraButtons[k][i]->setBounds (586 + i * 57, y + 44, 54, 24);
+                extraButtons[k][i]->setBounds (358 + i * 82, y + 30, 80, 20);
 
-            place (ID::corrupt[k], 816, y - 14, 70, 96);
-            place (ID::range[k], 884, y - 14, 72, 96);
+            place (ID::corrupt[k], 700 + k * 124, 462, 60, 84);
+            place (ID::range[k], 760 + k * 124, 462, 60, 84);
         }
 
-        int x = 232;
-        auto next = [&x] (juce::Component& c, int w) { c.setBounds (x, 604, w, 28); x += w + 6; };
+        int x = 84;
+        auto next = [&x] (juce::Component& c, int w) { c.setBounds (x, 606, w, 26); x += w + 6; };
         next (resetButton, 70);
         next (advanceButton, 84);
         if (auto* c = find (ID::chain)) next (*c, 96);
         next (bufferSave, 108);
         next (bufferRecall, 108);
-        place (ID::tempo, x, 604, 96, 28);
-        place (ID::scale, x + 102, 604, 960 - 8 - (x + 102), 28);
+        place (ID::tempo, x, 606, 96, 26);
+        place (ID::scale, x + 102, 606, 948 - (x + 102), 26);
 
         // MIDI strip
         place (ID::midiSend, 28, 678, 130, 28);
@@ -493,29 +497,29 @@ public:
             g.drawText (title, r.reduced (14, 6).removeFromTop (16), juce::Justification::centredLeft, false);
         };
 
-        section ({ 16, 64, 238, 148 }, "VCO (sinus)", theme::accentA);
-        section ({ 262, 64, 320, 148 }, pl ("MOD VCO (trójkąt)"), theme::accentLfo);
-        section ({ 590, 64, 370, 148 }, "MIXER", theme::accentVoice);
-        section ({ 16, 220, 322, 152 }, "VCW (wavefolder)", theme::accentFragment);
-        section ({ 346, 220, 370, 152 }, "VCF", theme::accentFilter);
-        section ({ 724, 220, 236, 152 }, "EG", theme::accentB);
-        section ({ 16, 380, 196, 260 }, "OUTPUT", theme::accentA);
-        section ({ 220, 380, 740, 260 }, "SEQUENCER", colourSeq[0]);
+        const char* names[] = { "VCO", "MOD VCO", "MIXER", "VCW", "VCF", "EG", "OUTPUT" };
+        const juce::Colour colours[] = { theme::accentA, theme::accentLfo, theme::accentVoice, theme::accentFragment, theme::accentFilter,
+                                         theme::accentB, theme::accentA };
+
+        for (int i = 0; i < 7; ++i)
+            section ({ 16 + i * 136, 64, 128, 376 }, names[i], colours[i]);
+
+        section ({ 16, 448, 944, 192 }, "SEQUENCER", colourSeq[0]);
         section ({ 16, 648, 944, 88 }, "MIDI", theme::accentLfo);
 
         for (int k = 0; k < 2; ++k)
         {
             g.setColour (colourSeq[k]);
             g.setFont (theme::font (15.0f, true));
-            g.drawText ("SEQ" + juce::String (k + 1), juce::Rectangle<int> (232, 416 + k * 96, 56, 22), juce::Justification::centredLeft, false);
+            g.drawText ("SEQ" + juce::String (k + 1), juce::Rectangle<int> (28, 478 + k * 64, 52, 20), juce::Justification::centredLeft, false);
             g.setColour (theme::textDim);
             g.setFont (theme::font (11.5f));
-            g.drawText (status[k], juce::Rectangle<int> (232, 440 + k * 96, 56, 18), juce::Justification::centredLeft, false);
+            g.drawText (status[k], juce::Rectangle<int> (28, 500 + k * 64, 52, 16), juce::Justification::centredLeft, false);
         }
 
         g.setColour (theme::textDim);
         g.setFont (theme::font (11.5f));
-        g.drawText ("ORDER", juce::Rectangle<int> (28, 518, 100, 14), juce::Justification::centredLeft, false);
+        g.drawText ("ORDER", juce::Rectangle<int> (16 + 6 * 136 + 10, 306, 100, 14), juce::Justification::centredLeft, false);
         g.drawText ("Nuty z", juce::Rectangle<int> (168, 662, 100, 14), juce::Justification::centredLeft, false);
         g.drawText (pl ("Przeciągnij takty"), juce::Rectangle<int> (460, 662, 160, 14), juce::Justification::centredLeft, false);
     }
@@ -540,7 +544,7 @@ public:
 
         bay.repaint();
         repaint (0, 0, kDesignWidth, 56);
-        repaint (224, 400, 70, 200);
+        repaint (16, 470, 70, 130);
     }
 
     Btn saveMidi { "Zapisz MIDI", theme::accentLfo };
