@@ -8,6 +8,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Static runtime on Windows, so the plugin doesn't need the Visual C++ redistributable.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
+# Visual Studio builds one file at a time per project unless told otherwise; four plugins need more.
+if(MSVC)
+    add_compile_options(/MP)
+endif()
+
 option(GIZMO_BUILD_TESTS "Build the offline test tool" OFF)
 option(GIZMO_STANDALONE "Also build a standalone app" OFF)
 set(GIZMO_JUCE_DIR "" CACHE PATH "Local JUCE checkout (downloaded automatically when empty)")
