@@ -784,7 +784,7 @@ juce::StringArray Dedal2Processor::getFactoryPresetNames() const
     names.addArray ({ pl ("Akordy: dwa głosy z CHAIN"), "Akordy: kwinty", "Akordy: 32 kroki", "Flip: SEQ1 zmienia SEQ2",
                       pl ("Flip: wzajemnie"), "Flip: 5 na 16",
                       "West: bongo (LPG)", pl ("West: FM dzwon"), pl ("West: fałdowany bas"), pl ("West: niepewność"),
-                      "West: pulser", "West: krople", "West: oddech" });
+                      "West: pulser", "West: krople", "West: oddech", "Saw: M VCO przez VCW i VCF" });
 
     return names;
 }
@@ -887,6 +887,20 @@ void Dedal2Processor::loadFactoryPreset (int presetIndex)
                      { ID::foldEg, 0.3f }, { ID::eg1Decay, 2.5f }, { ID::eg2Decay, 4.0f }, { ID::tempo, 1 }, { ID::scale, 13 },
                      { ID::range[0], 0.25f } };
         cables = { { outMvco, inVcwVca } };
+    }
+    else if (presetIndex == firstOwn + 13)
+    {
+        // A saw voice as read from a video frame: the M VCO synced to itself, sequenced through its
+        // 1V/OCT jack by SEQ2, sent straight into VCW IN and on through the filter (ORDER VCW > VCF),
+        // so the mixer stays free. Small knobs could not be read; those are set by ear.
+        settings = { { ID::order, 1 }, { ID::blend, 0.9f }, { ID::fold, 0.12f }, { ID::bias, 0.75f }, { ID::foldEg, 0.2f },
+                     { ID::cutoff, 0.45f }, { ID::cutEg, 0.45f }, { ID::resonance, 0.55f }, { ID::mode, 0.0f }, { ID::umixLvl, 0.85f },
+                     { ID::modFreq, 36.0f }, { ID::modSeq2, 0.0f }, { ID::lvlVco, 0.0f }, { ID::range[1], 0.25f }, { ID::range[0], 0.2f },
+                     { ID::scale, 12 }, { ID::tempo, 7 }, { ID::trigMix, 1.0f }, { ID::eg1Decay, 0.35f }, { ID::eg2Decay, 0.45f },
+                     { ID::midiSeq, 1 } };
+        cables = { { outMvco, inMvcoSync }, { outMvco, inVcwIn }, { outSeq2Cv, inMvcoVoct } };
+        bits[0] = "11101110";
+        bits[1] = "11111111";
     }
     else if (presetIndex == firstOwn + 5) // a short SEQ1 keeps rewriting a long SEQ2 in ever new places
     {
