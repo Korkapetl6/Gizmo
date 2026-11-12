@@ -81,6 +81,9 @@ jobs:
   release:
     name: Publish
     needs: build
+    # Publish whatever was built: when one platform gets no runner, the other still goes out and the
+    # missing platform keeps its previous files.
+    if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -88,13 +91,16 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Replace the "latest" release
+      - name: Update the "latest" release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh release delete latest --yes --cleanup-tag || true
-          gh release create latest dist/*.zip \
+          ls dist/*.zip
+          gh release view latest > /dev/null 2>&1 || gh release create latest \
             --target "${{ github.sha }}" \
             --title "Gizmo, Solista i Dedal (najnowsza wersja)" \
-            --notes "Zbudowane automatycznie z commita ${{ github.sha }}. Instrukcja instalacji jest w README."
+            --notes "Instrukcja instalacji jest w README."
+          gh release upload latest dist/*.zip --clobber
+          built=$(ls dist | sed 's/.*-\(Windows\|macOS\)-.*/\1/' | sort -u | tr '\n' ' ')
+          gh release edit latest --notes "Ostatnio zbudowane z commita ${{ github.sha }} dla: ${built}. Instrukcja instalacji jest w README."
