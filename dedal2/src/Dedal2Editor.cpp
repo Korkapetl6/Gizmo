@@ -47,7 +47,8 @@ public:
     bool filled;
 };
 
-/** Eight bits with the play head (bar on top) and the write head (red frame). */
+/** The bits of one sequencer as a row of lamps (8, or 16 with 16 STEPS): lit = on, a ring = the play
+    head, a red ring = the write head. Click a lamp to flip it. */
 class Bits : public juce::Component
 {
 public:
@@ -55,39 +56,36 @@ public:
 
     void set (const Snapshot& s) { snapshot = s; repaint(); }
 
+    int count() const noexcept { return snapshot.longSteps ? 16 : 8; }
+
     juce::Rectangle<float> cell (int i) const
     {
-        const auto w = ((float) getWidth() - 6.0f * 7.0f) / 8.0f;
-        return { (float) i * (w + 6.0f), 8.0f, w, (float) getHeight() - 8.0f };
+        const auto w = (float) getWidth() / (float) count();
+        return { (float) i * w, 0.0f, w, (float) getHeight() };
     }
 
     void paint (juce::Graphics& g) override
     {
         const auto& layout = snapshot.layout;
+        const auto size = juce::jmin (22.0f, cell (0).getWidth() - 6.0f);
 
-        for (int i = 0; i < kSteps; ++i)
+        auto lamp = [&] (int i) { return juce::Rectangle<float> (size, size).withCentre (cell (i).getCentre().translated (0.0f, -4.0f)); };
+
+        for (int i = 0; i < count(); ++i)
         {
-            const auto r = cell (i);
+            const auto r = lamp (i);
             const auto inside = i < layout.length[row];
-            const auto on = snapshot.state.bits[(size_t) (row * kSteps + i)];
-            const auto v = snapshot.state.values[(size_t) (row * kSteps + i)];
-            g.setColour (theme::knobBody.withMultipliedAlpha (inside ? 1.0f : 0.4f));
-            g.fillRoundedRectangle (r, 6.0f);
-
-            if (on)
-            {
-                const auto alpha = inside ? 1.0f : 0.3f;
-                g.setColour (colourSeq[row].withAlpha (0.22f * alpha));
-                g.fillRoundedRectangle (r.reduced (2.0f), 5.0f);
-                const auto mid = r.getCentreY(), h = v * (r.getHeight() * 0.5f - 5.0f);
-                g.setColour (colourSeq[row].withMultipliedAlpha (alpha));
-                g.fillRoundedRectangle ({ r.getX() + 5.0f, std::min (mid, mid - h), r.getWidth() - 10.0f, std::max (2.0f, std::abs (h)) }, 3.0f);
-            }
-
-            g.setColour (theme::panelEdge.brighter (0.3f));
-            g.drawRoundedRectangle (r.reduced (0.5f), 6.0f, 1.0f);
+            const auto on = snapshot.state.bits[(size_t) (row * 16 + i)];
+            g.setColour (on ? colourSeq[row].withMultipliedAlpha (inside ? 1.0f : 0.3f) : theme::background);
+            g.fillEllipse (r);
+            g.setColour ((on ? colourSeq[row] : theme::panelEdge.brighter (0.5f)).withMultipliedAlpha (inside ? 1.0f : 0.35f));
+            g.drawEllipse (r, 1.5f);
+            g.setColour (theme::textDim.withAlpha (inside ? 0.8f : 0.3f));
+            g.setFont (theme::font (9.5f));
+            g.drawText (juce::String (i + 1), cell (i).withTop (cell (i).getBottom() - 11.0f), juce::Justification::centred, false);
         }
 
+        // In CHAIN both heads run over both rows.
         for (int k = 0; k < 2; ++k)
         {
             if (! layout.chain && k != row)
@@ -95,26 +93,25 @@ public:
 
             const auto play = layout.slot (k, snapshot.head[(size_t) k]), write = layout.slot (k, snapshot.writeHead[(size_t) k]);
 
-            if (play / kSteps == row)
+            if (play / 16 == row)
             {
-                const auto r = cell (play % kSteps);
-                g.setColour (colourSeq[k].brighter (0.4f));
-                g.fillRoundedRectangle (r.getX() + 4.0f, 0.0f, r.getWidth() - 8.0f, 4.0f, 2.0f);
+                g.setColour (colourSeq[k].brighter (0.6f));
+                g.drawEllipse (lamp (play % 16).expanded (3.5f), 2.5f);
             }
 
-            if (write / kSteps == row && k == row)
+            if (write / 16 == row && k == row && write != play)
             {
                 g.setColour (juce::Colour (0xffff5a5a));
-                g.drawRoundedRectangle (cell (write % kSteps).reduced (1.0f), 6.0f, 2.0f);
+                g.drawEllipse (lamp (write % 16).expanded (3.5f), 1.5f);
             }
         }
     }
 
     void mouseDown (const juce::MouseEvent& e) override
     {
-        for (int i = 0; i < kSteps; ++i)
-            if (cell (i).expanded (3.0f, 8.0f).contains (e.position))
-                processor.toggleSlot (row * kSteps + i);
+        for (int i = 0; i < count(); ++i)
+            if (cell (i).contains (e.position))
+                processor.toggleSlot (row * 16 + i);
     }
 
 private:
@@ -349,6 +346,7 @@ public:
         combo (ID::tempo);
         combo (ID::scale);
         toggle (ID::chain, "CHAIN SEQ", theme::accentA);
+        toggle (ID::steps16, "16 STEPS", theme::accentA);
         toggle (ID::midiSend, pl ("Wysyłaj MIDI"), theme::accentLfo);
         toggle (ID::sound, pl ("Własne brzmienie"), theme::accentVoice);
 
@@ -500,7 +498,8 @@ public:
         next (resetButton, 70);
         next (advanceButton, 84);
         if (auto* c = find (ID::chain)) next (*c, 96);
-        next (bufferSave, 108);
+        if (auto* c = find (ID::steps16)) next (*c, 90);
+        next (bufferSave, 104);
         next (bufferRecall, 108);
         place (ID::tempo, x, 606, 96, 26);
         place (ID::scale, x + 102, 606, 948 - (x + 102), 26);

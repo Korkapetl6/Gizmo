@@ -50,7 +50,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout Dedal2Processor::createLayou
     add (ID::modSeq2, "MOD VCO SEQ2 AMT", { 0.0f, 1.0f, 0.001f }, 1.0f, amount);
     unit (ID::fm, "FM AMT", 0.0f);
     unit (ID::lvlVco, "VCO LVL", 0.5f);
-    unit (ID::lvlRing, "U MIX 1 LVL (RING)", 0.0f);
+    unit (ID::lvlRing, "RING MOD LVL", 0.0f);
+    unit (ID::umixLvl, "U MIX 1 LVL", 0.0f);
     unit (ID::lvlMod, "MOD VCO LVL", 0.0f);
     unit (ID::lvlNoise, "NOISE LVL", 0.0f);
     unit (ID::noiseTone, "NOISE TONE", 0.5f);
@@ -89,11 +90,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout Dedal2Processor::createLayou
         unit (ID::corrupt[k], "CORRUPT " + n, 0.0f);
         add (ID::range[k], "SEQ" + n + " CV RANGE", { 0.0f, 1.0f, 0.001f }, 0.2f,
              [] (float v, int) { return pl ("±") + juce::String (v * 5.0f, 2) + " V"; });
-        layout.add (std::make_unique<juce::AudioParameterInt> (juce::ParameterID { ID::length[k], 1 }, "LENGTH " + n, 1, 8, 8));
+        layout.add (std::make_unique<juce::AudioParameterInt> (juce::ParameterID { ID::length[k], 1 }, "LENGTH " + n, 1, 16, 8));
         toggle (ID::flip[k], "BIT FLIP " + n, false);
     }
 
     toggle (ID::chain, "CHAIN SEQ", false);
+    toggle (ID::steps16, "16 STEPS", false);
     choice (ID::scale, "Quantize", getScaleNames(), 2);
     choice (ID::tempo, "TEMPO", getRateNames(), 4);
     toggle (ID::trigger, "TRIGGER", false);
@@ -124,9 +126,12 @@ void Dedal2Processor::setParameter (const char* id, float plain)
 
 Layout Dedal2Processor::readLayout() const
 {
+    // Every sequencer keeps 16 slots; the 16 STEPS switch decides how many of them can be used.
+    const auto longest = value (ID::steps16) > 0.5f ? 16 : 8;
     Layout l;
-    l.length[0] = juce::jlimit (1, 8, index (ID::length[0]));
-    l.length[1] = juce::jlimit (1, 8, index (ID::length[1]));
+    l.capacity = 16;
+    l.length[0] = juce::jlimit (1, longest, index (ID::length[0]));
+    l.length[1] = juce::jlimit (1, longest, index (ID::length[1]));
     l.chain = value (ID::chain) > 0.5f;
     return l;
 }
@@ -144,6 +149,7 @@ Params Dedal2Processor::readParams() const
     p.fm = value (ID::fm);
     p.lvlVco = value (ID::lvlVco);
     p.lvlUmix1 = value (ID::lvlRing);
+    p.umixLvl = value (ID::umixLvl);
     p.lvlMod = value (ID::lvlMod);
     p.lvlNoise = value (ID::lvlNoise);
     p.noiseTone = value (ID::noiseTone);
@@ -179,6 +185,7 @@ Snapshot Dedal2Processor::getSnapshot() const
 {
     Snapshot s;
     s.layout = readLayout();
+    s.longSteps = value (ID::steps16) > 0.5f;
     const juce::SpinLock::ScopedLockType lock (seqLock);
     s.state = sequencers.state;
 
@@ -198,7 +205,7 @@ void Dedal2Processor::command (Command c, int k)
     if (c == Command::length)
     {
         const auto length = layout.length[k];
-        setParameter (ID::length[k], (float) (length <= 1 ? 8 : length - 1));
+        setParameter (ID::length[k], (float) (length <= 1 ? (value (ID::steps16) > 0.5f ? 16 : 8) : length - 1));
         return;
     }
 
@@ -215,8 +222,8 @@ void Dedal2Processor::command (Command c, int k)
             case Command::reset:        s.reset (layout, 0); s.reset (layout, 1); break;
             case Command::writeAdvance: s.moveWriteHead (layout, k, false); break;
             case Command::writeReset:   s.moveWriteHead (layout, k, true); break;
-            case Command::randomise:    s.randomise (k); break;
-            case Command::clear:        s.clear (k); break;
+            case Command::randomise:    s.randomise (k, 0.65f, layout.capacity); break;
+            case Command::clear:        s.clear (k, layout.capacity); break;
             case Command::length:       break;
         }
     }
@@ -228,7 +235,7 @@ void Dedal2Processor::toggleSlot (int slot)
 {
     {
         const juce::SpinLock::ScopedLockType lock (seqLock);
-        sequencers.flipSlot ((size_t) juce::jlimit (0, 15, slot));
+        sequencers.flipSlot ((size_t) juce::jlimit (0, 31, slot));
     }
     sendChangeMessage();
 }
@@ -612,6 +619,7 @@ juce::ValueTree Dedal2Processor::createState()
             cables.add (juce::String (engine.getCable (i)) + ">" + juce::String (i));
 
     state.setProperty ("cables", cables.joinIntoString (","), nullptr);
+    state.setProperty ("stride", 16, nullptr);
     state.setProperty ("preset", presetName, nullptr);
     return state;
 }
@@ -630,6 +638,18 @@ void Dedal2Processor::applyState (const juce::ValueTree& tree)
         const juce::SpinLock::ScopedLockType lock (seqLock);
         auto fresh = sequencers.state;
         fromValueTree (tree.getChildWithName (seqType), fresh);
+
+        // Older saves kept SEQ2 right after SEQ1's eight slots; it now starts at slot 16.
+        if ((int) tree.getProperty ("stride", 8) != 16)
+        {
+            for (int i = 0; i < 8; ++i)
+            {
+                fresh.bits[(size_t) (16 + i)] = fresh.bits[(size_t) (8 + i)];
+                fresh.values[(size_t) (16 + i)] = fresh.values[(size_t) (8 + i)];
+                fresh.bits[(size_t) (8 + i)] = false;
+            }
+        }
+
         sequencers.state = fresh;
     }
 
@@ -761,6 +781,9 @@ juce::StringArray Dedal2Processor::getFactoryPresetNames() const
     for (const auto& p : manualPatches())
         names.add (p.name);
 
+    names.addArray ({ pl ("Akordy: dwa głosy z CHAIN"), "Akordy: kwinty", "Akordy: 32 kroki", "Flip: SEQ1 zmienia SEQ2",
+                      pl ("Flip: wzajemnie"), "Flip: 5 na 16" });
+
     return names;
 }
 
@@ -771,6 +794,56 @@ void Dedal2Processor::loadFactoryPreset (int presetIndex)
     std::vector<Setting> settings;
     std::vector<Cable> cables;
     juce::String bits[2];
+    int chainOffset = 0;
+    const auto firstOwn = 5 + (int) manualPatches().size();
+
+    // Two voices at once: the VCO plays SEQ1, the MOD VCO SEQ2, both heard through the mixer and
+    // fired together, so every step is an interval; with CHAIN both read one sequence, apart.
+    const std::vector<Setting> twoVoices { { ID::lvlVco, 0.45f }, { ID::lvlMod, 0.45f }, { ID::modFreq, 48.0f }, { ID::trigMix, 0.5f },
+                                           { ID::midiSeq, 2 }, { ID::fold, 0.1f }, { ID::foldEg, 0.2f } };
+
+    if (presetIndex == firstOwn) // chords from one chained sequence read by two heads
+    {
+        settings = twoVoices;
+        settings.insert (settings.end(), { { ID::chain, 1 }, { ID::length[0], 4 }, { ID::length[1], 4 }, { ID::scale, 10 },
+                                           { ID::range[0], 0.3f }, { ID::range[1], 0.3f }, { ID::eg2Decay, 1.2f }, { ID::tempo, 4 },
+                                           { ID::cutoff, 0.62f } });
+        chainOffset = 2;
+    }
+    else if (presetIndex == firstOwn + 1) // the MOD VCO a fifth above, both following their own sequence
+    {
+        settings = twoVoices;
+        settings.insert (settings.end(), { { ID::modFreq, 55.0f }, { ID::scale, 3 }, { ID::range[0], 0.25f }, { ID::range[1], 0.15f },
+                                           { ID::length[1], 6 }, { ID::tempo, 7 }, { ID::eg2Decay, 0.4f } });
+    }
+    else if (presetIndex == firstOwn + 2) // 16 + 16 chained: 32 steps, two heads eight steps apart
+    {
+        settings = twoVoices;
+        settings.insert (settings.end(), { { ID::steps16, 1 }, { ID::chain, 1 }, { ID::length[0], 16 }, { ID::length[1], 16 },
+                                           { ID::scale, 13 }, { ID::range[0], 0.35f }, { ID::range[1], 0.35f }, { ID::tempo, 4 },
+                                           { ID::eg1Decay, 1.0f }, { ID::eg2Decay, 2.0f }, { ID::cutoff, 0.55f }, { ID::corrupt[0], 0.15f } });
+        chainOffset = 8;
+    }
+    else if (presetIndex == firstOwn + 3) // every SEQ1 trigger flips a bit of SEQ2
+    {
+        settings = { { ID::lvlMod, 0.4f }, { ID::trigMix, 0.5f }, { ID::scale, 12 }, { ID::modFreq, 60.0f }, { ID::tempo, 7 },
+                     { ID::range[1], 0.25f }, { ID::cutSeq, 0.4f }, { ID::eg2Decay, 0.3f }, { ID::length[1], 7 } };
+        cables = { { outSeq1Trig, inBitFlip2 } };
+    }
+    else if (presetIndex == firstOwn + 4) // each rewrites the other
+    {
+        settings = { { ID::lvlMod, 0.4f }, { ID::trigMix, 0.5f }, { ID::scale, 8 }, { ID::modFreq, 55.0f }, { ID::tempo, 7 },
+                     { ID::length[0], 7 }, { ID::length[1], 5 }, { ID::range[0], 0.2f }, { ID::range[1], 0.2f }, { ID::fold, 0.25f },
+                     { ID::foldSeq, 0.3f }, { ID::eg2Decay, 0.25f } };
+        cables = { { outSeq1Trig, inBitFlip2 }, { outSeq2Trig, inBitFlip1 } };
+    }
+    else if (presetIndex == firstOwn + 5) // a short SEQ1 keeps rewriting a long SEQ2 in ever new places
+    {
+        settings = { { ID::steps16, 1 }, { ID::length[0], 5 }, { ID::length[1], 16 }, { ID::lvlMod, 0.45f }, { ID::trigMix, 0.7f },
+                     { ID::scale, 3 }, { ID::modFreq, 60.0f }, { ID::tempo, 7 }, { ID::range[1], 0.3f }, { ID::eg2Decay, 0.35f },
+                     { ID::cutSeq, 0.5f }, { ID::resonance, 0.45f } };
+        cables = { { outSeq1Trig, inBitFlip2 } };
+    }
 
     switch (presetIndex)
     {
@@ -834,9 +907,10 @@ void Dedal2Processor::loadFactoryPreset (int presetIndex)
         const juce::SpinLock::ScopedLockType lock (seqLock);
         sequencers.random.setSeed (41 + presetIndex * 7);
         sequencers.state = {};
-        sequencers.randomise (0, 0.7f);
-        sequencers.randomise (1, 0.7f);
-        sequencers.state.bits[0] = sequencers.state.bits[kSteps] = true;
+        sequencers.randomise (0, 0.7f, 16);
+        sequencers.randomise (1, 0.7f, 16);
+        sequencers.state.bits[0] = sequencers.state.bits[16] = true;
+        sequencers.state.chainOffset = chainOffset;
 
         if (manual != nullptr)
         {
@@ -846,7 +920,7 @@ void Dedal2Processor::loadFactoryPreset (int presetIndex)
 
         for (int k = 0; k < 2; ++k)
             for (int i = 0; i < bits[k].length(); ++i)
-                sequencers.state.bits[(size_t) (k * kSteps + i)] = bits[k][i] == '1';
+                sequencers.state.bits[(size_t) (k * 16 + i)] = bits[k][i] == '1';
         sequencers.random.setSeed (juce::Random::getSystemRandom().nextInt64());
     }
 

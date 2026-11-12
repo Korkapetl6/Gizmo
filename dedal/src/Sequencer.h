@@ -147,6 +147,7 @@ struct Layout
 {
     int length[2] = { 8, 8 };
     bool chain = false;
+    int capacity = kSteps; // buffer slots per sequencer: 8, or 16 where the long mode exists
 
     int lengthOf (int k) const noexcept { return chain ? length[0] + length[1] : length[k]; }
 
@@ -154,9 +155,9 @@ struct Layout
     int slot (int k, int h) const noexcept
     {
         if (chain)
-            return h < length[0] ? h : kSteps + (h - length[0]);
+            return h < length[0] ? h : capacity + (h - length[0]);
 
-        return k * kSteps + h;
+        return k * capacity + h;
     }
 };
 
@@ -165,8 +166,8 @@ enum Direction { forward = 0, backward, pendulum, randomOrder };
 struct SeqState
 {
     // SEQ1 (slots 0-7) and SEQ2 (slots 8-15)
-    std::array<bool, 16> bits {};
-    std::array<float, 16> values {}; // -1 .. 1, the random voltage of each bit
+    std::array<bool, 32> bits {};
+    std::array<float, 32> values {}; // -1 .. 1, the random voltage of each bit
     std::array<int, 2> writeOffset {}, rotation {};
     int chainOffset = 0;
 
@@ -384,8 +385,8 @@ public:
     void rotate (const Layout& layout, int k, int by)
     {
         const auto length = layout.lengthOf (k);
-        std::array<bool, 16> bits {};
-        std::array<float, 16> values {};
+        std::array<bool, 32> bits {};
+        std::array<float, 32> values {};
 
         for (int h = 0; h < length; ++h)
         {
@@ -432,11 +433,11 @@ public:
         state.writeOffset[(size_t) k] = resetIt ? 0 : wrap (state.writeOffset[(size_t) k] + 1, layout.lengthOf (k));
     }
 
-    void randomise (int k, float density = 0.65f)
+    void randomise (int k, float density = 0.65f, int capacity = kSteps)
     {
-        for (int i = 0; i < kSteps; ++i)
+        for (int i = 0; i < capacity; ++i)
         {
-            const auto index = (size_t) (k * kSteps + i);
+            const auto index = (size_t) (k * capacity + i);
             state.bits[index] = random.nextFloat() < density;
             state.values[index] = newValue();
         }
@@ -453,7 +454,7 @@ public:
         }
     }
 
-    void clear (int k)
+    void clear (int k, int capacity = kSteps)
     {
         if (k == 2)
         {
@@ -462,8 +463,8 @@ public:
             return;
         }
 
-        for (int i = 0; i < kSteps; ++i)
-            state.bits[(size_t) (k * kSteps + i)] = false;
+        for (int i = 0; i < capacity; ++i)
+            state.bits[(size_t) (k * capacity + i)] = false;
     }
 
     /** What MIDI Start does: all play heads to bit 1, the logic of SEQ C forgotten. */

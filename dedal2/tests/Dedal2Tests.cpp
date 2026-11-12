@@ -7,6 +7,7 @@
 #include <juce_audio_formats/juce_audio_formats.h>
 
 #include <iostream>
+#include <map>
 
 using namespace dedal2;
 
@@ -180,6 +181,44 @@ void tests()
         check (low > 110.0 && low < 330.0 && std::abs (high / low - 2.0) < 0.1, "self-patched sync stays in tune and tracks the octave");
     }
 
+    // Own presets: chords, 16 + 16 chained, bit flips from the other sequencer
+    {
+        const auto names = p.getFactoryPresetNames();
+        auto find = [&names] (const char* start) { for (int i = 0; i < names.size(); ++i) if (names[i].startsWith (juce::String::fromUTF8 (start))) return i; return -1; };
+
+        p.loadFactoryPreset (find ("Akordy: dwa"));
+        p.setPlayHead (&head);
+        head.playing = true;
+        const auto chords = render (p, head, 6.0);
+        std::map<int, int> at;
+        for (auto t : chords.noteTimes)
+            at[juce::roundToInt (t * 1000.0)]++;
+        int together = 0;
+        for (auto& [t, n] : at)
+            together += n >= 2 ? 1 : 0;
+        check (together > 5, "two voices give chords (" + juce::String (together) + " moments with two notes)");
+
+        p.loadFactoryPreset (find ("Akordy: 32"));
+        check (p.getSnapshot().layout.lengthOf (0) == 32 && p.getSnapshot().longSteps, "16 STEPS with CHAIN gives 32 steps");
+        render (p, head, 3.0);
+        auto maxHead = 0;
+        for (int i = 0; i < 40; ++i)
+        {
+            render (p, head, 0.25, false);
+            maxHead = std::max (maxHead, p.getSnapshot().head[0]);
+        }
+        check (maxHead > 16, "the chained head goes past step 16 (" + juce::String (maxHead + 1) + ")");
+
+        p.loadFactoryPreset (find ("Flip: SEQ1"));
+        const auto before = p.getSnapshot().state.bits;
+        render (p, head, 4.0);
+        const auto after = p.getSnapshot().state.bits;
+        int changed = 0;
+        for (int i = 16; i < 24; ++i)
+            changed += before[(size_t) i] != after[(size_t) i] ? 1 : 0;
+        check (changed > 0, "SEQ1 TRIG into BIT FLIP 2 rewrites SEQ2 (" + juce::String (changed) + " bits)");
+    }
+
     // State keeps the cables
     p.loadFactoryPreset (3);
     juce::MemoryBlock state;
@@ -233,7 +272,7 @@ void demos (const juce::File& dir)
         std::cout << p.getFactoryPresetNames()[i] << ": peak " << r.peak() << std::endl;
     }
 
-    p.loadFactoryPreset (3);
+    p.loadFactoryPreset (19);
     render (p, head, 2.0);
     std::unique_ptr<juce::AudioProcessorEditor> editor (p.createEditor());
     editor->setSize (Dedal2Editor::kDesignWidth, Dedal2Editor::kDesignHeight);

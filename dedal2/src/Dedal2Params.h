@@ -8,7 +8,7 @@ DEDAL2_ID (lvlVco) DEDAL2_ID (lvlRing) DEDAL2_ID (umixLvl) DEDAL2_ID (lvlMod) DE
 DEDAL2_ID (fold) DEDAL2_ID (bias) DEDAL2_ID (foldEg) DEDAL2_ID (foldSeq)
 DEDAL2_ID (cutoff) DEDAL2_ID (cutEg) DEDAL2_ID (cutSeq) DEDAL2_ID (resonance) DEDAL2_ID (mode)
 DEDAL2_ID (blend) DEDAL2_ID (order) DEDAL2_ID (eg1Decay) DEDAL2_ID (eg2Decay) DEDAL2_ID (trigMix) DEDAL2_ID (volume)
-DEDAL2_ID (chain) DEDAL2_ID (scale) DEDAL2_ID (tempo) DEDAL2_ID (trigger)
+DEDAL2_ID (chain) DEDAL2_ID (steps16) DEDAL2_ID (scale) DEDAL2_ID (tempo) DEDAL2_ID (trigger)
 DEDAL2_ID (midiSend) DEDAL2_ID (midiSeq) DEDAL2_ID (gate) DEDAL2_ID (sound)
 #undef DEDAL2_ID
 inline constexpr const char* corrupt[] = { "corrupt1", "corrupt2" };

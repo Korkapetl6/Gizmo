@@ -13,6 +13,7 @@ struct Snapshot
     SeqState state;
     Layout layout;
     std::array<int, 2> head {}, writeHead {};
+    bool longSteps = false; // 16 steps per sequencer instead of 8
 };
 
 enum class Command { bitFlip, bitShift, unshift, length, advance, reset, writeAdvance, writeReset, randomise, clear };

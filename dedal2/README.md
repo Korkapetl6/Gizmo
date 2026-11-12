@@ -15,7 +15,7 @@ Pliki: **Releases** → `Dedal2-Windows-VST3.zip`, `Dedal2-macOS-VST3.zip`, `Ded
 - **VCF**: CUTOFF, RESONANCE, EG1/CV AMT, SEQ2 AMT, FILTER MODE (LP → BP).
 - **EG**: EG1 DECAY, EG2 DECAY, EG TRIG MIX, TRIGGER.
 - **OUTPUT**: BLEND, ORDER (PARALLEL, VCW > VCF, VCF > VCW), VOLUME.
-- **SEQUENCER**: dla każdego sekwencera 8 bitów, CORRUPT, CV RANGE (do ±5 V, czyli pięć oktaw), BIT FLIP, BIT SHIFT, LENGTH. Wspólne: RUN, RESET, ADVANCE, CHAIN SEQ, BUFFER.
+- **SEQUENCER**: dla każdego sekwencera 8 bitów (z przełącznikiem **16 STEPS** – 16, a z CHAIN SEQ razem 32), CORRUPT, CV RANGE (do ±5 V, czyli pięć oktaw), BIT FLIP, BIT SHIFT, LENGTH. Wspólne: RUN, RESET, ADVANCE, CHAIN SEQ, BUFFER.
 
 Różnice wobec sprzętu: TEMPO to podział tempa Abletona (lista 1/1 … 1/32), a tryb kwantyzacji wybierasz z listy zamiast kombinacją przycisków. Dodatkowe małe przyciski: ZAPIS +1 / ZAPIS 0 (przesunięcie głowicy zapisu), SHIFT 0 (cofa obroty), LOSUJ.
 
@@ -59,3 +59,8 @@ Różnice, o których warto wiedzieć: TEMPO to tu podział tempa Abletona, wię
 ## Strojenie bez ucha
 
 Pod FREQUENCY obu oscylatorów są przyciski **-12, -1, +1, +12**. Przesuwają wysokość dokładnie o półton albo oktawę i przy okazji zaokrąglają ją do pełnego półtonu, więc VCO i MOD VCO łatwo ustawić w czystym interwale (np. +7 = kwinta, +12 = oktawa).
+
+## Akordy i flipy
+
+- **Akordy**: VCO gra SEQ1, MOD VCO gra SEQ2, oba są w mikserze i odpalają się razem, więc na każdym kroku brzmi interwał. Presety *Akordy: dwa głosy z CHAIN* (jedna sekwencja, dwie głowice 2 kroki od siebie), *Akordy: kwinty* (MOD VCO o kwintę wyżej) i *Akordy: 32 kroki* (16 STEPS + CHAIN, głowice 8 kroków od siebie). Z MIDI na „SEQ1+2” akordy idą też do innego instrumentu.
+- **Flipy**: kabel SEQ TRIG jednego sekwencera do BIT FLIP drugiego. *Flip: SEQ1 zmienia SEQ2*, *Flip: wzajemnie* (oba kable naraz) i *Flip: 5 na 16* (krótki SEQ1 przepisuje długi SEQ2 w coraz innych miejscach). Gdy oba sekwencery mają tę samą długość, flip wraca do punktu wyjścia co drugą pętlę, więc różne długości dają więcej zmian.
